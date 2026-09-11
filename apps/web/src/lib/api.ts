@@ -11,11 +11,31 @@ export function getSession():Session|null{
 }
 
 export function saveSession(session:Session){
-  if(typeof window!=='undefined') window.localStorage.setItem('accounting.session',JSON.stringify(session));
+  if(typeof window!=='undefined') {
+    window.localStorage.setItem('accounting.session',JSON.stringify(session));
+    if(session.defaultCompanyId&&!window.localStorage.getItem('accounting.companyId')) window.localStorage.setItem('accounting.companyId',session.defaultCompanyId);
+  }
 }
 
 export function clearSession(){
-  if(typeof window!=='undefined') window.localStorage.removeItem('accounting.session');
+  if(typeof window!=='undefined') {
+    window.localStorage.removeItem('accounting.session');
+    window.localStorage.removeItem('accounting.companyId');
+  }
+}
+
+export function getCompanyId(){
+  if(typeof window==='undefined') return DEMO_COMPANY_ID;
+  const session=getSession();
+  const selected=window.localStorage.getItem('accounting.companyId');
+  if(selected&&session?.memberships.some(m=>m.companyId===selected)) return selected;
+  return session?.defaultCompanyId??session?.memberships[0]?.companyId??DEMO_COMPANY_ID;
+}
+
+export function setCompanyId(companyId:string){
+  if(typeof window==='undefined') return;
+  const session=getSession();
+  if(session?.memberships.some(m=>m.companyId===companyId)) window.localStorage.setItem('accounting.companyId',companyId);
 }
 
 function headers(extra?:Record<string,string>){
