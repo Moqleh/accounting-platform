@@ -11,5 +11,3 @@ PSQL_URL="${DATABASE_URL%%\?*}"
 for file in security.sql banking.sql posting-config.sql purchase-returns.sql; do
   psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f "apps/api/prisma/$file"
 done
-
-psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/qa-smoke.sql
