@@ -6,6 +6,7 @@ import { ErpController } from './erp.controller';
 import { SalesController } from './sales.controller';
 import { PurchasesController } from './purchases.controller';
 import { PaymentsController } from './payments.controller';
+import { CreditNotesController } from './credit-notes.controller';
 import { YearEndController } from './year-end.controller';
 import { AdminController } from './admin.controller';
 import { AuthController } from './auth.controller';
@@ -13,6 +14,7 @@ import { AccountingService } from './accounting.service';
 import { SalesService } from './sales.service';
 import { PurchasesService } from './purchases.service';
 import { PaymentsService } from './payments.service';
+import { CreditNotesService } from './credit-notes.service';
 import { YearEndService } from './year-end.service';
 import { AuthService } from './auth.service';
 import { IdempotencyService } from './idempotency.service';
@@ -30,7 +32,7 @@ import { PrismaService } from './prisma.service';
       signOptions: { expiresIn: '8h' },
     }),
   ],
-  controllers: [AppController, AuthController, AccountingController, ErpController, SalesController, PurchasesController, PaymentsController, YearEndController, AdminController],
-  providers: [PrismaService, TenantPrismaService, AuthService, IdempotencyService, JwtAuthGuard, RolesGuard, PermissionGuard, AccountingService, SalesService, PurchasesService, PaymentsService, YearEndService],
+  controllers: [AppController, AuthController, AccountingController, ErpController, SalesController, PurchasesController, PaymentsController, CreditNotesController, YearEndController, AdminController],
+  providers: [PrismaService, TenantPrismaService, AuthService, IdempotencyService, JwtAuthGuard, RolesGuard, PermissionGuard, AccountingService, SalesService, PurchasesService, PaymentsService, CreditNotesService, YearEndService],
 })
 export class AppModule {}
