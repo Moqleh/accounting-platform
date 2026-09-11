@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { JournalSourceType, JournalStatus, Prisma } from '@prisma/client';
 import { PrismaService } from './prisma.service';
 
@@ -24,13 +24,19 @@ export class AccountingService {
   }
 
   async postJournalInTransaction(tx: Prisma.TransactionClient, input: JournalInput) {
-    if (!input.lines.length) throw new BadRequestException('Journal requires at least one line');
+    if (input.lines.length < 2) throw new BadRequestException('Journal requires at least two lines');
     const company = await tx.company.findUnique({where:{id:input.companyId}});
     if (!company) throw new NotFoundException('Company not found');
     const period = await tx.fiscalPeriod.findUnique({where:{id:input.fiscalPeriodId},include:{fiscalYear:true}});
     if (!period || period.fiscalYear.companyId!==input.companyId) throw new BadRequestException('Invalid fiscal period');
-    if (period.status!=='Open') throw new BadRequestException('Fiscal period is not open');
+    if (period.status==='Hard_Closed') throw new BadRequestException('Fiscal period is hard closed');
+    if (period.status==='Soft_Closed') {
+      if (!input.postedById) throw new ForbiddenException('Period override permission is required');
+      const membership=await tx.companyMembership.findUnique({where:{companyId_userId:{companyId:input.companyId,userId:input.postedById}}});
+      if(!membership || !['Admin','Owner'].includes(membership.role)) throw new ForbiddenException('Period override permission is required');
+    }
     if (input.transactionDate < period.startDate || input.transactionDate > new Date(`${period.endDate.toISOString().slice(0,10)}T23:59:59.999Z`)) throw new BadRequestException('Transaction date is outside fiscal period');
+    if(input.postedById){const membership=await tx.companyMembership.findUnique({where:{companyId_userId:{companyId:input.companyId,userId:input.postedById}}});if(!membership) throw new ForbiddenException('Posting user is not a company member')}
     const accountIds=[...new Set(input.lines.map(l=>l.accountId))];
     const accounts=await tx.account.findMany({where:{id:{in:accountIds},companyId:input.companyId,isLeaf:true,isActive:true}});
     if(accounts.length!==accountIds.length) throw new BadRequestException('All journal accounts must be active leaf accounts in the same company');
@@ -44,7 +50,10 @@ export class AccountingService {
       return {...line, transactionDebit:d,transactionCredit:c,baseDebit:d.mul(rate).toDecimalPlaces(4),baseCredit:c.mul(rate).toDecimalPlaces(4)};
     });
     if(!debit.eq(credit)) throw new BadRequestException('Journal is not balanced');
-    return tx.journal.create({data:{companyId:input.companyId,fiscalPeriodId:input.fiscalPeriodId,journalNumber:input.journalNumber,sourceType:input.sourceType,sourceId:input.sourceId,transactionDate:input.transactionDate,currencyCode:input.currencyCode,exchangeRate:rate,status:JournalStatus.Posted,postedById:input.postedById,postedAt:new Date(),lines:{create:lines.map(l=>({accountId:l.accountId,transactionDebit:l.transactionDebit,transactionCredit:l.transactionCredit,baseDebit:l.baseDebit,baseCredit:l.baseCredit,customerId:l.customerId,supplierId:l.supplierId,description:l.description}))}},include:{lines:true}});
+
+    const draft=await tx.journal.create({data:{companyId:input.companyId,fiscalPeriodId:input.fiscalPeriodId,journalNumber:input.journalNumber,sourceType:input.sourceType,sourceId:input.sourceId,transactionDate:input.transactionDate,currencyCode:input.currencyCode,exchangeRate:rate,status:JournalStatus.Draft,lines:{create:lines.map(l=>({accountId:l.accountId,transactionDebit:l.transactionDebit,transactionCredit:l.transactionCredit,baseDebit:l.baseDebit,baseCredit:l.baseCredit,customerId:l.customerId,supplierId:l.supplierId,description:l.description}))}}});
+    const posted=await tx.journal.update({where:{id:draft.id},data:{status:JournalStatus.Posted,postedById:input.postedById,postedAt:new Date()},include:{lines:true}});
+    return posted;
   }
 
   async reverseJournal(companyId:string,journalId:string,reversalDate:Date,postedById?:string,reason='Journal reversal'){
@@ -55,7 +64,7 @@ export class AccountingService {
       if(original.status!==JournalStatus.Posted) throw new BadRequestException('Only posted journals can be reversed');
       if(original.reversedJournalId) throw new BadRequestException('Journal has already been reversed');
       const period=await tx.fiscalPeriod.findFirst({where:{fiscalYear:{companyId},startDate:{lte:reversalDate},endDate:{gte:reversalDate}}});
-      if(!period||period.status!=='Open') throw new BadRequestException('No open fiscal period for reversal date');
+      if(!period||period.status==='Hard_Closed') throw new BadRequestException('No postable fiscal period for reversal date');
       const journalNumber=await this.nextJournalNumber(tx,companyId);
       const reversal=await this.postJournalInTransaction(tx,{companyId,fiscalPeriodId:period.id,journalNumber,sourceType:original.sourceType,sourceId:original.sourceId??undefined,transactionDate:reversalDate,currencyCode:original.currencyCode,exchangeRate:original.exchangeRate,postedById,lines:original.lines.map(l=>({accountId:l.accountId,debit:l.transactionCredit,credit:l.transactionDebit,customerId:l.customerId??undefined,supplierId:l.supplierId??undefined,description:`${reason}: ${original.journalNumber}`}))});
       await tx.journal.update({where:{id:original.id},data:{status:JournalStatus.Reversed,reversedJournalId:reversal.id}});
