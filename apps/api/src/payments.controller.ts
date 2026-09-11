@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Headers, Post, Req, UseGuards } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
@@ -11,13 +11,13 @@ export class PaymentsController {
 
   @RequirePermission('payments.write')
   @Post('customer-receipt')
-  customerReceipt(@Req() req:any,@Body() body:{companyId:string;customerId:string;amount:string;date:string;currencyCode:string;exchangeRate:string;cashAccountId?:string;reference?:string}){
-    return this.payments.customerReceipt({...body,postedById:req.user.sub,date:new Date(body.date)});
+  customerReceipt(@Req() req:any,@Headers('idempotency-key') idempotencyKey:string|undefined,@Body() body:{companyId:string;customerId:string;amount:string;date:string;currencyCode:string;exchangeRate:string;cashAccountId?:string;reference?:string;allocations?:Array<{invoiceId:string;amount:string}>}){
+    return this.payments.customerReceipt({...body,postedById:req.user.sub,date:new Date(body.date)},idempotencyKey);
   }
 
   @RequirePermission('payments.write')
   @Post('supplier-payment')
-  supplierPayment(@Req() req:any,@Body() body:{companyId:string;supplierId:string;amount:string;date:string;currencyCode:string;exchangeRate:string;cashAccountId?:string;reference?:string}){
-    return this.payments.supplierPayment({...body,postedById:req.user.sub,date:new Date(body.date)});
+  supplierPayment(@Req() req:any,@Headers('idempotency-key') idempotencyKey:string|undefined,@Body() body:{companyId:string;supplierId:string;amount:string;date:string;currencyCode:string;exchangeRate:string;cashAccountId?:string;reference?:string;allocations?:Array<{billId:string;amount:string}>}){
+    return this.payments.supplierPayment({...body,postedById:req.user.sub,date:new Date(body.date)},idempotencyKey);
   }
 }
