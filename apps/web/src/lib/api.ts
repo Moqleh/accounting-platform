@@ -43,19 +43,23 @@ function headers(extra?:Record<string,string>){
   return {'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{ }),...extra};
 }
 
+async function parseError(response:Response){const text=await response.text();try{const body=JSON.parse(text) as {message?:string|string[]};return Array.isArray(body.message)?body.message.join(', '):body.message??text}catch{return text}}
+
 export async function apiGet<T>(path:string):Promise<T>{
   const response=await fetch(`${API_URL}${path}`,{cache:'no-store',headers:headers()});
   if(response.status===401&&typeof window!=='undefined'){clearSession();if(window.location.pathname!=='/login')window.location.assign('/login')}
-  if(!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
+  if(!response.ok) throw new Error(`API ${response.status}: ${await parseError(response)}`);
   return response.json() as Promise<T>;
 }
 
-export async function apiPost<T>(path:string,body:unknown):Promise<T>{
-  const response=await fetch(`${API_URL}${path}`,{method:'POST',headers:headers(),body:JSON.stringify(body)});
+export async function apiPost<T>(path:string,body:unknown,extraHeaders?:Record<string,string>):Promise<T>{
+  const response=await fetch(`${API_URL}${path}`,{method:'POST',headers:headers(extraHeaders),body:JSON.stringify(body)});
   if(response.status===401&&typeof window!=='undefined'){clearSession();if(window.location.pathname!=='/login')window.location.assign('/login')}
-  if(!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
+  if(!response.ok) throw new Error(`API ${response.status}: ${await parseError(response)}`);
   return response.json() as Promise<T>;
 }
+
+export function idempotencyHeaders(){return {'Idempotency-Key':crypto.randomUUID()}}
 
 export async function login(email:string,password:string){
   const response=await fetch(`${API_URL}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
