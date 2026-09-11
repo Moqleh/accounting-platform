@@ -47,6 +47,7 @@ jobs:
           PSQL_URL="${DATABASE_URL%%\?*}"
           psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/security.sql
           psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/banking.sql
+          psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/posting-config.sql
       - run: pnpm --filter @accounting/api prisma:seed
       - run: pnpm -r typecheck
       - run: pnpm -r test
