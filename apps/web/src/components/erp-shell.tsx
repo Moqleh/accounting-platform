@@ -1,40 +1,12 @@
 'use client';
-
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Bell, Boxes, Building2, CalendarCheck2, Landmark, FileText, Gauge, Languages, LogOut, ReceiptText, Search, Settings, ShoppingCart, TrendingUp, Users, WalletCards, Wrench, BadgeDollarSign } from 'lucide-react';
-import { clearSession, getCompanyId, getSession, setCompanyId, type Session } from '@/lib/api';
-
-type Locale = 'ar' | 'en';
-const LocaleContext = createContext<{locale: Locale; setLocale:(v:Locale)=>void}>({locale:'ar', setLocale:()=>{}});
-
-export const labels = {
-  ar: {app:'نظام المحاسبة', search:'ابحث في النظام...', dashboard:'الرئيسية', sales:'المبيعات', purchases:'المشتريات', customers:'العملاء', suppliers:'الموردون', inventory:'المنتجات والمخزون', expenses:'المصروفات', payments:'الصندوق والبنوك', banking:'التسوية البنكية', journals:'القيود اليومية', reports:'التقارير', users:'المستخدمون', setup:'تهيئة النظام', yearEnd:'إقفال السنة', settings:'الإعدادات', lang:'EN', logout:'تسجيل الخروج'},
-  en: {app:'Accounting System', search:'Search in the system...', dashboard:'Dashboard', sales:'Sales', purchases:'Purchases', customers:'Customers', suppliers:'Suppliers', inventory:'Products & Inventory', expenses:'Expenses', payments:'Payments & Banks', banking:'Bank Reconciliation', journals:'Journal Entries', reports:'Reports', users:'Users', setup:'Accounting Setup', yearEnd:'Year-End Closing', settings:'Settings', lang:'AR', logout:'Sign out'}
-} as const;
-
-const nav = [
-  ['/', Gauge, 'dashboard'], ['/sales', ShoppingCart, 'sales'], ['/purchases', ReceiptText, 'purchases'], ['/customers', Users, 'customers'], ['/suppliers', Building2, 'suppliers'], ['/inventory', Boxes, 'inventory'], ['/expenses', BadgeDollarSign, 'expenses'], ['/payments', WalletCards, 'payments'], ['/banking', Landmark, 'banking'], ['/journals', FileText, 'journals'], ['/reports', TrendingUp, 'reports'], ['/users', Users, 'users'], ['/setup', Wrench, 'setup'], ['/year-end', CalendarCheck2, 'yearEnd'], ['/settings', Settings, 'settings'],
-] as const;
-
-export function ErpShell({children}:{children:ReactNode}) {
-  const path = usePathname();const router=useRouter();
-  const [locale, setLocale] = useState<Locale>('ar');const [session,setSession]=useState<Session|null>(null);const [ready,setReady]=useState(false);const [companyId,setActiveCompany]=useState('');
-  useEffect(()=>{ const saved = localStorage.getItem('accounting-locale') as Locale | null; if(saved==='ar'||saved==='en') setLocale(saved); const current=getSession(); if(!current){router.replace('/login');setReady(true);return} setSession(current);setActiveCompany(getCompanyId());setReady(true); },[router]);
-  useEffect(()=>{ localStorage.setItem('accounting-locale', locale); document.documentElement.lang=locale; document.documentElement.dir=locale==='ar'?'rtl':'ltr'; },[locale]);
-  const t = labels[locale];
-  const ctx = useMemo(()=>({locale,setLocale}),[locale]);
-  if(!ready||!session) return null;
-  const membership=session.memberships.find(m=>m.companyId===companyId)??session.memberships[0];
-  const switchCompany=(id:string)=>{setCompanyId(id);setActiveCompany(id);window.location.reload()};
-  const logout=()=>{clearSession();router.replace('/login')};
-  return <LocaleContext.Provider value={ctx}><main className="shell" dir={locale==='ar'?'rtl':'ltr'}>
-    <aside className="sidebar"><div className="brand"><span className="brandMark">▥</span><strong>{t.app}</strong></div><nav>
-      {nav.map(([href,Icon,key])=><Link key={href} href={href} className={`navItem ${path===href || (href!=='/' && path.startsWith(href))?'active':''}`}><Icon size={18}/><span>{t[key]}</span></Link>)}
-    </nav></aside>
-    <section className="workspace"><header className="topbar"><div className="company"><div className="avatar">{session.user.fullName.slice(0,1).toUpperCase()}</div><div><b>{session.user.fullName}</b>{session.memberships.length>1?<select value={companyId} onChange={e=>switchCompany(e.target.value)} aria-label="company">{session.memberships.map(m=><option key={m.companyId} value={m.companyId}>{m.companyName}</option>)}</select>:<small>{membership?.companyName??''}</small>}</div></div><div className="search"><Search size={18}/><input placeholder={t.search}/></div><div className="topActions"><button aria-label="notifications"><Bell size={19}/></button><button onClick={()=>setLocale(locale==='ar'?'en':'ar')}><Languages size={18}/>{t.lang}</button><button onClick={logout} title={t.logout}><LogOut size={18}/></button></div></header><div className="content">{children}</div></section>
-  </main></LocaleContext.Provider>;
-}
-
-export function useLocale(){ const {locale}=useContext(LocaleContext); return {locale, t:labels[locale]}; }
+import { createContext,useContext,useEffect,useMemo,useState,type ReactNode } from 'react';
+import { BadgeDollarSign,Bell,Boxes,Building2,CalendarCheck2,FileText,Gauge,Landmark,Languages,LogOut,ReceiptText,Search,Settings,ShieldCheck,ShoppingCart,TrendingUp,Users,WalletCards,Wrench } from 'lucide-react';
+import { clearSession,getCompanyId,getSession,setCompanyId,type Session } from '@/lib/api';
+type Locale='ar'|'en';const LocaleContext=createContext<{locale:Locale;setLocale:(v:Locale)=>void}>({locale:'ar',setLocale:()=>{}});
+export const labels={ar:{app:'نظام المحاسبة',search:'ابحث في النظام...',dashboard:'الرئيسية',sales:'المبيعات',purchases:'المشتريات',customers:'العملاء',suppliers:'الموردون',inventory:'المنتجات والمخزون',expenses:'المصروفات',payments:'الصندوق والبنوك',banking:'التسوية البنكية',journals:'القيود اليومية',reports:'التقارير',users:'المستخدمون',setup:'تهيئة النظام',yearEnd:'إقفال السنة',audit:'سجل المراجعة',settings:'الإعدادات',lang:'EN',logout:'تسجيل الخروج'},en:{app:'Accounting System',search:'Search in the system...',dashboard:'Dashboard',sales:'Sales',purchases:'Purchases',customers:'Customers',suppliers:'Suppliers',inventory:'Products & Inventory',expenses:'Expenses',payments:'Payments & Banks',banking:'Bank Reconciliation',journals:'Journal Entries',reports:'Reports',users:'Users',setup:'Accounting Setup',yearEnd:'Year-End Closing',audit:'Audit Trail',settings:'Settings',lang:'AR',logout:'Sign out'}} as const;
+const nav=[['/',Gauge,'dashboard'],['/sales',ShoppingCart,'sales'],['/purchases',ReceiptText,'purchases'],['/customers',Users,'customers'],['/suppliers',Building2,'suppliers'],['/inventory',Boxes,'inventory'],['/expenses',BadgeDollarSign,'expenses'],['/payments',WalletCards,'payments'],['/banking',Landmark,'banking'],['/journals',FileText,'journals'],['/reports',TrendingUp,'reports'],['/users',Users,'users'],['/setup',Wrench,'setup'],['/year-end',CalendarCheck2,'yearEnd'],['/audit',ShieldCheck,'audit'],['/settings',Settings,'settings']] as const;
+const adminOnly=new Set(['/users','/setup','/year-end','/audit','/settings']);
+export function ErpShell({children}:{children:ReactNode}){const path=usePathname(),router=useRouter();const [locale,setLocale]=useState<Locale>('ar'),[session,setSession]=useState<Session|null>(null),[ready,setReady]=useState(false),[companyId,setActiveCompany]=useState('');useEffect(()=>{const saved=localStorage.getItem('accounting-locale') as Locale|null;if(saved==='ar'||saved==='en')setLocale(saved);const current=getSession();if(!current){router.replace('/login');setReady(true);return}setSession(current);setActiveCompany(getCompanyId());setReady(true)},[router]);useEffect(()=>{localStorage.setItem('accounting-locale',locale);document.documentElement.lang=locale;document.documentElement.dir=locale==='ar'?'rtl':'ltr'},[locale]);const t=labels[locale],ctx=useMemo(()=>({locale,setLocale}),[locale]);if(!ready||!session)return null;const membership=session.memberships.find(m=>m.companyId===companyId)??session.memberships[0],isAdmin=['Admin','Owner'].includes(membership?.role??'');const visibleNav=nav.filter(([href])=>!adminOnly.has(href)||isAdmin);const switchCompany=(id:string)=>{setCompanyId(id);setActiveCompany(id);window.location.reload()},logout=()=>{clearSession();router.replace('/login')};return <LocaleContext.Provider value={ctx}><main className="shell" dir={locale==='ar'?'rtl':'ltr'}><aside className="sidebar"><div className="brand"><span className="brandMark">▥</span><strong>{t.app}</strong></div><nav>{visibleNav.map(([href,Icon,key])=><Link key={href} href={href} className={`navItem ${path===href||(href!=='/'&&path.startsWith(href))?'active':''}`}><Icon size={18}/><span>{t[key]}</span></Link>)}</nav></aside><section className="workspace"><header className="topbar"><div className="company"><div className="avatar">{session.user.fullName.slice(0,1).toUpperCase()}</div><div><b>{session.user.fullName}</b>{session.memberships.length>1?<select value={companyId} onChange={e=>switchCompany(e.target.value)} aria-label="company">{session.memberships.map(m=><option key={m.companyId} value={m.companyId}>{m.companyName}</option>)}</select>:<small>{membership?.companyName??''}</small>}</div></div><div className="search"><Search size={18}/><input placeholder={t.search}/></div><div className="topActions"><button aria-label="notifications"><Bell size={19}/></button><button onClick={()=>setLocale(locale==='ar'?'en':'ar')}><Languages size={18}/>{t.lang}</button><button onClick={logout} title={t.logout}><LogOut size={18}/></button></div></header><div className="content">{children}</div></section></main></LocaleContext.Provider>}
+export function useLocale(){const {locale}=useContext(LocaleContext);return {locale,t:labels[locale]}}
