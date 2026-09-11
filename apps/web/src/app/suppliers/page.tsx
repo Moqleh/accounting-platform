@@ -1,0 +1,4 @@
+import { ModulePage } from '@/components/module-page';
+const columns=[{ar:'#',en:'#',key:'id'},{ar:'المورد',en:'Supplier',key:'name'},{ar:'الجوال',en:'Phone',key:'phone'},{ar:'البريد الإلكتروني',en:'Email',key:'email'},{ar:'الرصيد',en:'Balance',key:'balance'},{ar:'الحالة',en:'Status',key:'status'}];
+const rows=[{id:1,name:'شركة التقنية',phone:'0505551111',email:'sales@tech.com',balance:'18,500',status:'Active'},{id:2,name:'مؤسسة الإمداد',phone:'0504442222',email:'info@supply.com',balance:'7,300',status:'Active'},{id:3,name:'شركة الخليج',phone:'0503332222',email:'accounts@gulf.com',balance:'12,600',status:'Active'}];
+export default function Page(){return <ModulePage titleAr="الموردون" titleEn="Suppliers" subtitleAr="ملفات الموردين والأرصدة والمشتريات" subtitleEn="Supplier profiles, balances and purchases" columns={columns} rows={rows} actionAr="مورد جديد" actionEn="New Supplier"/>}
