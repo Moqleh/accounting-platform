@@ -1,15 +1,12 @@
 name: CI
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -20,8 +17,7 @@ jobs:
           POSTGRES_USER: accounting
           POSTGRES_PASSWORD: accounting
           POSTGRES_DB: accounting
-        ports:
-          - 5432:5432
+        ports: [5432:5432]
         options: >-
           --health-cmd="pg_isready -U accounting -d accounting"
           --health-interval=10s
@@ -48,6 +44,7 @@ jobs:
           psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/security.sql
           psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/banking.sql
           psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/posting-config.sql
+          psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/purchase-returns.sql
       - run: pnpm --filter @accounting/api prisma:seed
       - run: pnpm -r typecheck
       - run: pnpm -r test
