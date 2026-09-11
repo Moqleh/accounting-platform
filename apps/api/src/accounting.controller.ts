@@ -17,6 +17,12 @@ export class AccountingController {
   }
 
   @RequirePermission('accounting.write')
+  @Post('journals/manual')
+  manual(@Req() req:any,@Body() body:{companyId:string;transactionDate:string;currencyCode?:string;exchangeRate?:string;reference?:string;lines:Array<{accountId:string;debit?:string;credit?:string;customerId?:string;supplierId?:string;description?:string}>}){
+    return this.accounting.postManualJournal({...body,postedById:req.user.sub,transactionDate:new Date(body.transactionDate)});
+  }
+
+  @RequirePermission('accounting.write')
   @Post('journals/reverse')
   reverse(@Req() req:any,@Body() body:{companyId:string;journalId:string;reversalDate:string;reason?:string}){
     return this.accounting.reverseJournal(body.companyId,body.journalId,new Date(body.reversalDate),req.user.sub,body.reason);
