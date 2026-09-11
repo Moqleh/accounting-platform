@@ -1,0 +1,4 @@
+import { ModulePage } from '@/components/module-page';
+const columns=[{ar:'رقم القيد',en:'Journal #',key:'number'},{ar:'المصدر',en:'Source',key:'source'},{ar:'التاريخ',en:'Date',key:'date'},{ar:'مدين',en:'Debit',key:'debit'},{ar:'دائن',en:'Credit',key:'credit'},{ar:'الحالة',en:'Status',key:'status'}];
+const rows=[{number:'JV-000124',source:'Sales Invoice',date:'2026-09-10',debit:'12,450',credit:'12,450',status:'Posted'},{number:'JV-000123',source:'Purchase Bill',date:'2026-09-09',debit:'18,500',credit:'18,500',status:'Posted'},{number:'JV-000122',source:'Manual',date:'2026-09-08',debit:'3,250',credit:'3,250',status:'Draft'}];
+export default function Page(){return <ModulePage titleAr="القيود اليومية" titleEn="Journal Entries" subtitleAr="قيود محاسبية مزدوجة مع سجل مراجعة" subtitleEn="Double-entry journals with audit trail" columns={columns} rows={rows} actionAr="قيد جديد" actionEn="New Journal"/>}
