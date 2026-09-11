@@ -46,7 +46,8 @@ export class PurchasesService {
           journalLines.push({accountId:item.inventoryAccountId,debit:net.toString(),supplierId:input.supplierId,description:`Inventory ${billNumber}`});
           lots.push({itemId:item.id,quantity:qty,unitCost:cost});
         }else{
-          journalLines.push({accountId:item.revenueAccountId,debit:net.toString(),supplierId:input.supplierId,description:`Service purchase ${billNumber}`});
+          if(!item.cogsAccountId) throw new BadRequestException(`Expense account missing for service item ${item.code}`);
+          journalLines.push({accountId:item.cogsAccountId,debit:net.toString(),supplierId:input.supplierId,description:`Service purchase ${billNumber}`});
         }
         if(taxAmount.gt(0)&&tax) journalLines.push({accountId:tax.purchaseTaxAccountId,debit:taxAmount.toString(),supplierId:input.supplierId,description:`Input tax ${billNumber}`});
       }
