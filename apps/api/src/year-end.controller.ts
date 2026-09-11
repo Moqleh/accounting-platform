@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Post, Req, UseGuards } from '@nestjs/common';
 import { YearEndService } from './year-end.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
@@ -12,7 +12,7 @@ export class YearEndController {
   @RequirePermission('accounting.write')
   @Post('close')
   close(@Req() req:any,@Body() body:{companyId:string;fiscalYearId:string;retainedEarningsAccountId:string;notes?:string}){
-    if(!['Admin','Owner'].includes(req.membership?.role)) throw new Error('Only Admin/Owner can close a fiscal year');
+    if(!['Admin','Owner'].includes(req.membership?.role)) throw new ForbiddenException('Only Admin/Owner can close a fiscal year');
     return this.yearEnd.close({...body,closedById:req.user.sub});
   }
 }
