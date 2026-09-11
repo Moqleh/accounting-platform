@@ -20,6 +20,7 @@ import { CreditNotesService } from './credit-notes.service';
 import { YearEndService } from './year-end.service';
 import { AuthService } from './auth.service';
 import { IdempotencyService } from './idempotency.service';
+import { PostingConfigService } from './posting-config.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
 import { PermissionGuard } from './permission.guard';
@@ -35,6 +36,6 @@ import { PrismaService } from './prisma.service';
     }),
   ],
   controllers: [AppController, AuthController, AccountingController, ErpController, AgingController, SalesController, PurchasesController, PaymentsController, CreditNotesController, YearEndController, AdminController, BankingController],
-  providers: [PrismaService, TenantPrismaService, AuthService, IdempotencyService, JwtAuthGuard, RolesGuard, PermissionGuard, AccountingService, SalesService, PurchasesService, PaymentsService, CreditNotesService, YearEndService],
+  providers: [PrismaService, TenantPrismaService, AuthService, IdempotencyService, PostingConfigService, JwtAuthGuard, RolesGuard, PermissionGuard, AccountingService, SalesService, PurchasesService, PaymentsService, CreditNotesService, YearEndService],
 })
 export class AppModule {}
