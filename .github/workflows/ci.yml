@@ -25,6 +25,7 @@ jobs:
           --health-retries=5
     env:
       DATABASE_URL: postgresql://accounting:accounting@localhost:5432/accounting?schema=public
+      JWT_SECRET: ci-only-not-for-production
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -36,7 +37,11 @@ jobs:
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @accounting/api prisma:generate
       - run: pnpm --filter @accounting/api exec prisma db push --skip-generate
-      - run: psql "$DATABASE_URL" -f apps/api/prisma/security.sql
+      - name: Apply database security invariants
+        shell: bash
+        run: |
+          PSQL_URL="${DATABASE_URL%%\?*}"
+          psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/security.sql
       - run: pnpm --filter @accounting/api prisma:seed
       - run: pnpm -r typecheck
       - run: pnpm -r test
