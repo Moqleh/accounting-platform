@@ -16,4 +16,10 @@ export class AuthController {
   me(@Req() req: any) {
     return req.user;
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  changePassword(@Req() req:any,@Body() body:{currentPassword:string;newPassword:string}){
+    return this.auth.changePassword(req.user.sub,body.currentPassword,body.newPassword);
+  }
 }
