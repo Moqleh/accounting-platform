@@ -1,0 +1,8 @@
+'use client';
+import Link from 'next/link';
+import { useEffect,useState } from 'react';
+import { ErpShell,useLocale } from '@/components/erp-shell';
+import { apiGet,getCompanyId } from '@/lib/api';
+type Note={id:string;debitNoteNumber:string;purchaseBillId:string;debitDate:string;grandTotal:string;reason:string;status:string;supplier:string;currencyCode?:string};
+export default function Page(){return <ErpShell><Body/></ErpShell>}
+function Body(){const {locale}=useLocale(),ar=locale==='ar',companyId=getCompanyId();const [rows,setRows]=useState<Note[]>([]),[error,setError]=useState('');useEffect(()=>{apiGet<Note[]>(`/debit-notes/${companyId}`).then(setRows).catch(e=>setError(e instanceof Error?e.message:String(e)))},[companyId]);return <><div className="heading"><div><h1>{ar?'مرتجعات المشتريات':'Purchase Returns'}</h1><p>{ar?'إشعارات مدينة للموردين مع إعادة المخزون':'Supplier debit notes with inventory reversal'}</p></div><Link className="primary" href="/purchases/debit-notes/new">+ {ar?'مرتجع جديد':'New Return'}</Link></div>{error&&<div className="card formMessage">{error}</div>}<section className="card"><div className="tableWrap"><table><thead><tr><th>{ar?'الرقم':'Number'}</th><th>{ar?'المورد':'Supplier'}</th><th>{ar?'التاريخ':'Date'}</th><th>{ar?'الإجمالي':'Total'}</th><th>{ar?'السبب':'Reason'}</th><th>{ar?'الحالة':'Status'}</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td>{r.debitNoteNumber}</td><td>{r.supplier}</td><td>{r.debitDate.slice(0,10)}</td><td>{Number(r.grandTotal).toLocaleString()} {r.currencyCode??''}</td><td>{r.reason}</td><td><span className="status paid">{r.status}</span></td></tr>)}</tbody></table></div></section></>}
