@@ -32,6 +32,15 @@ export class ErpController {
   @Get('items/:companyId')
   items(@Param('companyId') companyId:string){return this.prisma.item.findMany({where:{companyId},include:{lots:true},orderBy:{code:'asc'}})}
 
+  @Get('warehouses/:companyId')
+  warehouses(@Param('companyId') companyId:string){return this.prisma.warehouse.findMany({where:{companyId,isActive:true},orderBy:{code:'asc'}})}
+
+  @Get('tax-rates/:companyId')
+  taxRates(@Param('companyId') companyId:string){return this.prisma.taxRate.findMany({where:{companyId},orderBy:[{code:'asc'},{effectiveFrom:'desc'}]})}
+
+  @Get('accounts/:companyId')
+  accounts(@Param('companyId') companyId:string){return this.prisma.account.findMany({where:{companyId},orderBy:{code:'asc'}})}
+
   @Get('sales/:companyId')
   sales(@Param('companyId') companyId:string){return this.prisma.salesInvoice.findMany({where:{companyId},include:{customer:true,lines:{include:{item:true}}},orderBy:{invoiceDate:'desc'}})}
 
@@ -56,5 +65,13 @@ export class ErpController {
     let revenue=new Prisma.Decimal(0),expense=new Prisma.Decimal(0);
     for(const line of lines){if(line.account.type==='Revenue') revenue=revenue.add(line.baseCredit).sub(line.baseDebit); else expense=expense.add(line.baseDebit).sub(line.baseCredit)}
     return {revenue:revenue.toString(),expense:expense.toString(),netProfit:revenue.sub(expense).toString()};
+  }
+
+  @Get('balance-sheet/:companyId')
+  async balanceSheet(@Param('companyId') companyId:string,@Query('asOf') asOf?:string){
+    const lines=await this.prisma.journalLine.findMany({where:{journal:{companyId,status:{in:['Posted','Reversed']},transactionDate:{lte:asOf?new Date(asOf):undefined}},account:{type:{in:['Asset','Liability','Equity']}}},include:{account:true}});
+    const balances=new Map<string,{code:string;name:string;type:string;balance:Prisma.Decimal}>();
+    for(const line of lines){const key=line.accountId;const current=balances.get(key)??{code:line.account.code,name:line.account.name,type:line.account.type,balance:new Prisma.Decimal(0)};const movement=line.account.type==='Asset'?line.baseDebit.sub(line.baseCredit):line.baseCredit.sub(line.baseDebit);current.balance=current.balance.add(movement);balances.set(key,current)}
+    return [...balances.values()].map(x=>({...x,balance:x.balance.toString()}));
   }
 }
