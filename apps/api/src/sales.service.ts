@@ -2,23 +2,27 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { DocumentStatus, JournalSourceType, Prisma } from '@prisma/client';
 import { PrismaService } from './prisma.service';
 import { AccountingService } from './accounting.service';
+import { IdempotencyService } from './idempotency.service';
 
 type SalesLineInput = { itemId:string; quantity:string; unitPrice:string; taxRateId?:string };
 type SalesInput = { companyId:string; customerId:string; warehouseId:string; invoiceDate:Date; currencyCode:string; exchangeRate:string; postedById?:string; lines:SalesLineInput[] };
 
 @Injectable()
 export class SalesService {
-  constructor(private readonly prisma:PrismaService, private readonly accounting:AccountingService){}
+  constructor(private readonly prisma:PrismaService, private readonly accounting:AccountingService, private readonly idempotency:IdempotencyService){}
 
-  async createAndPost(input:SalesInput){
+  async createAndPost(input:SalesInput,idempotencyKey?:string){
     return this.prisma.$transaction(async tx=>{
+      const claim=await this.idempotency.reserve(tx,input.companyId,'POST:/sales/invoice',idempotencyKey,input);
+      if(claim?.replay!==undefined) return claim.replay;
       if(!input.lines.length) throw new BadRequestException('Invoice requires lines');
+      if(new Set(input.lines.map(l=>l.itemId)).size!==input.lines.length) throw new BadRequestException('Duplicate item lines are not allowed');
       const customer=await tx.customer.findUnique({where:{id:input.customerId}});
-      if(!customer||customer.companyId!==input.companyId) throw new BadRequestException('Invalid customer');
+      if(!customer||customer.companyId!==input.companyId||!customer.isActive) throw new BadRequestException('Invalid customer');
       const warehouse=await tx.warehouse.findUnique({where:{id:input.warehouseId}});
-      if(!warehouse||warehouse.companyId!==input.companyId) throw new BadRequestException('Invalid warehouse');
+      if(!warehouse||warehouse.companyId!==input.companyId||!warehouse.isActive) throw new BadRequestException('Invalid warehouse');
       const period=await tx.fiscalPeriod.findFirst({where:{fiscalYear:{companyId:input.companyId},startDate:{lte:input.invoiceDate},endDate:{gte:input.invoiceDate}}});
-      if(!period||period.status!=='Open') throw new BadRequestException('No open fiscal period for invoice date');
+      if(!period||period.status==='Hard_Closed') throw new BadRequestException('No postable fiscal period for invoice date');
       const company=await tx.company.findUnique({where:{id:input.companyId}}); if(!company) throw new NotFoundException('Company not found');
       const ar=await tx.account.findFirst({where:{companyId:input.companyId,code:'1120',isLeaf:true,isActive:true}}); if(!ar) throw new BadRequestException('Accounts receivable account is not configured');
       const itemIds=[...new Set(input.lines.map(l=>l.itemId))];
@@ -28,8 +32,8 @@ export class SalesService {
       const taxIds=[...new Set(input.lines.map(l=>l.taxRateId).filter(Boolean) as string[])];
       const taxes=taxIds.length?await tx.taxRate.findMany({where:{companyId:input.companyId,id:{in:taxIds}}}):[];
       const taxMap=new Map(taxes.map(t=>[t.id,t]));
-      const invoiceNumber=await this.nextNumber(tx,input.companyId,'SALES_INVOICE','INV-');
-      const journalNumber=await this.nextNumber(tx,input.companyId,'JOURNAL','JV-');
+      const invoiceNumber=await this.nextNumber(tx,input.companyId,'SALES_INVOICE','INV-',period.fiscalYearId,'MAIN');
+      const journalNumber=await this.nextNumber(tx,input.companyId,'JOURNAL','JV-',period.fiscalYearId,'MAIN');
       let subtotal=new Prisma.Decimal(0),taxTotal=new Prisma.Decimal(0),cogsTotal=new Prisma.Decimal(0);
       const prepared=[] as Array<{itemId:string;quantity:Prisma.Decimal;unitPrice:Prisma.Decimal;taxRateId?:string;taxRateSnapshot:Prisma.Decimal;taxAmount:Prisma.Decimal;lineTotal:Prisma.Decimal}>;
       const journalLines:Array<{accountId:string;debit?:string;credit?:string;customerId?:string;description?:string}>=[];
@@ -38,6 +42,7 @@ export class SalesService {
         const item=itemMap.get(raw.itemId)!; const qty=new Prisma.Decimal(raw.quantity); const price=new Prisma.Decimal(raw.unitPrice);
         if(qty.lte(0)||price.lt(0)) throw new BadRequestException('Invalid quantity or price');
         const tax=raw.taxRateId?taxMap.get(raw.taxRateId):undefined; if(raw.taxRateId&&!tax) throw new BadRequestException('Invalid tax rate');
+        if(tax&&(tax.effectiveFrom>input.invoiceDate||(tax.effectiveTo&&tax.effectiveTo<input.invoiceDate))) throw new BadRequestException('Tax rate is not effective on invoice date');
         const net=qty.mul(price).toDecimalPlaces(4); const rate=tax?.rate??new Prisma.Decimal(0); const taxAmount=net.mul(rate).toDecimalPlaces(4); const total=net.add(taxAmount);
         subtotal=subtotal.add(net);taxTotal=taxTotal.add(taxAmount);
         prepared.push({itemId:item.id,quantity:qty,unitPrice:price,taxRateId:tax?.id,taxRateSnapshot:rate,taxAmount,lineTotal:total});
@@ -55,17 +60,20 @@ export class SalesService {
         }
       }
       const grand=subtotal.add(taxTotal); journalLines.unshift({accountId:ar.id,debit:grand.toString(),customerId:input.customerId,description:`Invoice ${invoiceNumber}`});
-      const invoice=await tx.salesInvoice.create({data:{companyId:input.companyId,invoiceNumber,customerId:input.customerId,status:DocumentStatus.Posted,invoiceDate:input.invoiceDate,subtotal,taxTotal,grandTotal:grand,lines:{create:prepared}},include:{lines:true,customer:true}});
+      const invoice=await tx.salesInvoice.create({data:{companyId:input.companyId,invoiceNumber,customerId:input.customerId,status:DocumentStatus.Draft,invoiceDate:input.invoiceDate,subtotal,taxTotal,grandTotal:grand,lines:{create:prepared}},include:{lines:true,customer:true}});
       for(const op of inventoryOps){const movement=await tx.inventoryMovement.create({data:{companyId:input.companyId,itemId:op.itemId,warehouseId:input.warehouseId,quantity:op.quantity.neg(),unitCost:op.quantity.eq(0)?0:op.totalCost.div(op.quantity),totalCost:op.totalCost.neg(),movementDate:input.invoiceDate,referenceType:'SalesInvoice',referenceId:invoice.id}});for(const a of op.allocs)await tx.inventoryAllocation.create({data:{movementId:movement.id,lotId:a.lotId,quantity:a.quantity,unitCost:a.unitCost,totalCost:a.totalCost}})}
       const journal=await this.accounting.postJournalInTransaction(tx,{companyId:input.companyId,fiscalPeriodId:period.id,journalNumber,sourceType:JournalSourceType.SalesInvoice,sourceId:invoice.id,transactionDate:input.invoiceDate,currencyCode:input.currencyCode||company.baseCurrencyCode,exchangeRate:input.exchangeRate||'1',postedById:input.postedById,lines:journalLines});
+      const postedInvoice=await tx.salesInvoice.update({where:{id:invoice.id},data:{status:DocumentStatus.Posted},include:{lines:true,customer:true}});
       await tx.outboxEvent.create({data:{companyId:input.companyId,aggregateType:'SalesInvoice',aggregateId:invoice.id,eventType:'SalesInvoicePosted',payload:{invoiceId:invoice.id,journalId:journal.id,total:grand.toString()}}});
-      return {invoice,journalId:journal.id,cogs:cogsTotal.toString()};
+      const result={invoice:postedInvoice,journalId:journal.id,cogs:cogsTotal.toString()};
+      await this.idempotency.complete(tx,claim,201,result);
+      return result;
     },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
   }
 
-  private async nextNumber(tx:Prisma.TransactionClient,companyId:string,documentType:string,fallbackPrefix:string){
-    let seq=await tx.documentSequence.findFirst({where:{companyId,documentType},orderBy:{id:'asc'}});
-    if(!seq) seq=await tx.documentSequence.create({data:{companyId,documentType,prefix:fallbackPrefix,currentNumber:0n,padding:6}});
+  private async nextNumber(tx:Prisma.TransactionClient,companyId:string,documentType:string,fallbackPrefix:string,fiscalYearId:string,branchCode:string){
+    let seq=await tx.documentSequence.findUnique({where:{companyId_fiscalYearId_branchCode_documentType:{companyId,fiscalYearId,branchCode,documentType}}});
+    if(!seq) seq=await tx.documentSequence.create({data:{companyId,fiscalYearId,branchCode,documentType,prefix:fallbackPrefix,currentNumber:0n,padding:6}});
     await tx.$queryRaw`SELECT id FROM "DocumentSequence" WHERE id=${seq.id}::uuid FOR UPDATE`;
     seq=await tx.documentSequence.update({where:{id:seq.id},data:{currentNumber:{increment:1}}});
     return `${seq.prefix}${seq.currentNumber.toString().padStart(seq.padding,'0')}`;
