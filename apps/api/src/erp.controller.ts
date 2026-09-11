@@ -70,8 +70,8 @@ export class ErpController {
 
   @RequirePermission('reports.read')
   @Get('trial-balance/:companyId')
-  async trialBalance(@Param('companyId') companyId:string){
-    const rows=await this.prisma.journalLine.groupBy({by:['accountId'],where:{journal:{companyId,status:{in:['Posted','Reversed']}}},_sum:{baseDebit:true,baseCredit:true}});
+  async trialBalance(@Param('companyId') companyId:string,@Query('from') from?:string,@Query('to') to?:string){
+    const rows=await this.prisma.journalLine.groupBy({by:['accountId'],where:{journal:{companyId,status:{in:['Posted','Reversed']},transactionDate:{gte:from?new Date(from):undefined,lte:to?new Date(to):undefined}}},_sum:{baseDebit:true,baseCredit:true}});
     const accounts=await this.prisma.account.findMany({where:{id:{in:rows.map(r=>r.accountId)}}});
     const map=new Map(accounts.map(a=>[a.id,a]));
     return rows.map(r=>({accountCode:map.get(r.accountId)?.code,accountName:map.get(r.accountId)?.name,debit:r._sum.baseDebit?.toString()??'0',credit:r._sum.baseCredit?.toString()??'0'}));
@@ -90,9 +90,17 @@ export class ErpController {
   @RequirePermission('reports.read')
   @Get('balance-sheet/:companyId')
   async balanceSheet(@Param('companyId') companyId:string,@Query('asOf') asOf?:string){
-    const lines=await this.prisma.journalLine.findMany({where:{journal:{companyId,status:{in:['Posted','Reversed']},transactionDate:{lte:asOf?new Date(asOf):undefined}},account:{type:{in:['Asset','Liability','Equity']}}},include:{account:true}});
+    const target=asOf?new Date(asOf):new Date();
+    const lines=await this.prisma.journalLine.findMany({where:{journal:{companyId,status:{in:['Posted','Reversed']},transactionDate:{lte:target}},account:{type:{in:['Asset','Liability','Equity']}}},include:{account:true}});
     const balances=new Map<string,{code:string;name:string;type:string;balance:Prisma.Decimal}>();
     for(const line of lines){const key=line.accountId;const current=balances.get(key)??{code:line.account.code,name:line.account.name,type:line.account.type,balance:new Prisma.Decimal(0)};const movement=line.account.type==='Asset'?line.baseDebit.sub(line.baseCredit):line.baseCredit.sub(line.baseDebit);current.balance=current.balance.add(movement);balances.set(key,current)}
+    const year=await this.prisma.fiscalYear.findFirst({where:{companyId,startDate:{lte:target},endDate:{gte:target}},orderBy:{startDate:'desc'}});
+    if(year&&year.status!=='Closed'){
+      const nominal=await this.prisma.journalLine.findMany({where:{journal:{companyId,status:{in:['Posted','Reversed']},sourceType:{not:'YearEndClosing'},transactionDate:{gte:year.startDate,lte:target}},account:{type:{in:['Revenue','Expense']}}},include:{account:true}});
+      let revenue=new Prisma.Decimal(0),expense=new Prisma.Decimal(0);
+      for(const line of nominal){if(line.account.type==='Revenue')revenue=revenue.add(line.baseCredit).sub(line.baseDebit);else expense=expense.add(line.baseDebit).sub(line.baseCredit)}
+      balances.set('__CURRENT_YEAR_EARNINGS__',{code:'',name:'Current Year Earnings',type:'Equity',balance:revenue.sub(expense)});
+    }
     return [...balances.values()].map(x=>({...x,balance:x.balance.toString()}));
   }
 
