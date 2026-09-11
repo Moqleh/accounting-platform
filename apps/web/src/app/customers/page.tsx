@@ -1,0 +1,4 @@
+import { ModulePage } from '@/components/module-page';
+const columns=[{ar:'#',en:'#',key:'id'},{ar:'اسم العميل',en:'Customer',key:'name'},{ar:'الجوال',en:'Phone',key:'phone'},{ar:'البريد الإلكتروني',en:'Email',key:'email'},{ar:'الرصيد',en:'Balance',key:'balance'},{ar:'الحالة',en:'Status',key:'status'}];
+const rows=[{id:1,name:'مؤسسة النور',phone:'0501234567',email:'info@alnoor.com',balance:'5,000',status:'Active'},{id:2,name:'شركة الأمل',phone:'0509876543',email:'info@alamal.com',balance:'0',status:'Active'},{id:3,name:'شركة النخبة',phone:'0551112233',email:'info@elite.com',balance:'12,300',status:'Active'}];
+export default function Page(){return <ModulePage titleAr="العملاء" titleEn="Customers" subtitleAr="ملفات العملاء والأرصدة والحركة" subtitleEn="Customer profiles, balances and activity" columns={columns} rows={rows} actionAr="عميل جديد" actionEn="New Customer"/>}
