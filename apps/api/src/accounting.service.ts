@@ -15,6 +15,8 @@ type JournalInput = {
   lines: Array<{accountId:string; debit?:Prisma.Decimal|string; credit?:Prisma.Decimal|string; customerId?:string; supplierId?:string; description?:string}>;
 };
 
+type ManualJournalInput={companyId:string;transactionDate:Date;currencyCode?:string;exchangeRate?:string;postedById?:string;reference?:string;lines:JournalInput['lines']};
+
 @Injectable()
 export class AccountingService {
   constructor(private readonly prisma: PrismaService) {}
@@ -23,12 +25,24 @@ export class AccountingService {
     return this.prisma.$transaction((tx)=>this.postJournalInTransaction(tx,input), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
+  async postManualJournal(input:ManualJournalInput){
+    return this.prisma.$transaction(async tx=>{
+      const company=await tx.company.findUnique({where:{id:input.companyId}});if(!company)throw new NotFoundException('Company not found');
+      const period=await tx.fiscalPeriod.findFirst({where:{fiscalYear:{companyId:input.companyId,status:{not:'Closed'}},startDate:{lte:input.transactionDate},endDate:{gte:input.transactionDate}},orderBy:{startDate:'desc'}});if(!period)throw new BadRequestException('No fiscal period contains the transaction date');
+      const journalNumber=await this.nextJournalNumber(tx,input.companyId);
+      const journal=await this.postJournalInTransaction(tx,{companyId:input.companyId,fiscalPeriodId:period.id,journalNumber,sourceType:JournalSourceType.Manual,sourceId:input.reference,transactionDate:input.transactionDate,currencyCode:input.currencyCode??company.baseCurrencyCode,exchangeRate:input.exchangeRate??'1',postedById:input.postedById,lines:input.lines});
+      await tx.outboxEvent.create({data:{companyId:input.companyId,aggregateType:'Journal',aggregateId:journal.id,eventType:'ManualJournalPosted',payload:{journalId:journal.id,journalNumber:journal.journalNumber,reference:input.reference??null}}});
+      return journal;
+    },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+  }
+
   async postJournalInTransaction(tx: Prisma.TransactionClient, input: JournalInput) {
     if (input.lines.length < 2) throw new BadRequestException('Journal requires at least two lines');
     const company = await tx.company.findUnique({where:{id:input.companyId}});
     if (!company) throw new NotFoundException('Company not found');
     const period = await tx.fiscalPeriod.findUnique({where:{id:input.fiscalPeriodId},include:{fiscalYear:true}});
     if (!period || period.fiscalYear.companyId!==input.companyId) throw new BadRequestException('Invalid fiscal period');
+    if (period.fiscalYear.status==='Closed') throw new BadRequestException('Fiscal year is closed');
     if (period.status==='Hard_Closed') throw new BadRequestException('Fiscal period is hard closed');
     if (period.status==='Soft_Closed') {
       if (!input.postedById) throw new ForbiddenException('Period override permission is required');
@@ -40,6 +54,10 @@ export class AccountingService {
     const accountIds=[...new Set(input.lines.map(l=>l.accountId))];
     const accounts=await tx.account.findMany({where:{id:{in:accountIds},companyId:input.companyId,isLeaf:true,isActive:true}});
     if(accounts.length!==accountIds.length) throw new BadRequestException('All journal accounts must be active leaf accounts in the same company');
+    const customerIds=[...new Set(input.lines.map(l=>l.customerId).filter(Boolean) as string[])];const supplierIds=[...new Set(input.lines.map(l=>l.supplierId).filter(Boolean) as string[])];
+    if(customerIds.length&&await tx.customer.count({where:{companyId:input.companyId,id:{in:customerIds}}})!==customerIds.length)throw new BadRequestException('Invalid customer on journal line');
+    if(supplierIds.length&&await tx.supplier.count({where:{companyId:input.companyId,id:{in:supplierIds}}})!==supplierIds.length)throw new BadRequestException('Invalid supplier on journal line');
+    if(input.lines.some(l=>l.customerId&&l.supplierId))throw new BadRequestException('A journal line cannot reference both a customer and supplier');
     const rate=new Prisma.Decimal(input.exchangeRate);
     if(rate.lte(0)) throw new BadRequestException('Exchange rate must be positive');
     let debit=new Prisma.Decimal(0), credit=new Prisma.Decimal(0);
@@ -63,7 +81,7 @@ export class AccountingService {
       if(!original||original.companyId!==companyId) throw new NotFoundException('Journal not found');
       if(original.status!==JournalStatus.Posted) throw new BadRequestException('Only posted journals can be reversed');
       if(original.reversedJournalId) throw new BadRequestException('Journal has already been reversed');
-      const period=await tx.fiscalPeriod.findFirst({where:{fiscalYear:{companyId},startDate:{lte:reversalDate},endDate:{gte:reversalDate}}});
+      const period=await tx.fiscalPeriod.findFirst({where:{fiscalYear:{companyId,status:{not:'Closed'}},startDate:{lte:reversalDate},endDate:{gte:reversalDate}}});
       if(!period||period.status==='Hard_Closed') throw new BadRequestException('No postable fiscal period for reversal date');
       const journalNumber=await this.nextJournalNumber(tx,companyId);
       const reversal=await this.postJournalInTransaction(tx,{companyId,fiscalPeriodId:period.id,journalNumber,sourceType:original.sourceType,sourceId:original.sourceId??undefined,transactionDate:reversalDate,currencyCode:original.currencyCode,exchangeRate:original.exchangeRate,postedById,lines:original.lines.map(l=>({accountId:l.accountId,debit:l.transactionCredit,credit:l.transactionDebit,customerId:l.customerId??undefined,supplierId:l.supplierId??undefined,description:`${reason}: ${original.journalNumber}`}))});
