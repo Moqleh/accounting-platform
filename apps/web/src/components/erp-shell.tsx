@@ -3,19 +3,19 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Bell, Boxes, Building2, CalendarCheck2, Landmark, FileText, Gauge, Languages, LogOut, ReceiptText, Search, Settings, ShoppingCart, TrendingUp, Users, WalletCards, Wrench } from 'lucide-react';
+import { Bell, Boxes, Building2, CalendarCheck2, Landmark, FileText, Gauge, Languages, LogOut, ReceiptText, Search, Settings, ShoppingCart, TrendingUp, Users, WalletCards, Wrench, BadgeDollarSign } from 'lucide-react';
 import { clearSession, getCompanyId, getSession, setCompanyId, type Session } from '@/lib/api';
 
 type Locale = 'ar' | 'en';
 const LocaleContext = createContext<{locale: Locale; setLocale:(v:Locale)=>void}>({locale:'ar', setLocale:()=>{}});
 
 export const labels = {
-  ar: {app:'نظام المحاسبة', search:'ابحث في النظام...', dashboard:'الرئيسية', sales:'المبيعات', purchases:'المشتريات', customers:'العملاء', suppliers:'الموردون', inventory:'المنتجات والمخزون', payments:'الصندوق والبنوك', banking:'التسوية البنكية', journals:'القيود اليومية', reports:'التقارير', users:'المستخدمون', setup:'تهيئة النظام', yearEnd:'إقفال السنة', settings:'الإعدادات', lang:'EN', logout:'تسجيل الخروج'},
-  en: {app:'Accounting System', search:'Search in the system...', dashboard:'Dashboard', sales:'Sales', purchases:'Purchases', customers:'Customers', suppliers:'Suppliers', inventory:'Products & Inventory', payments:'Payments & Banks', banking:'Bank Reconciliation', journals:'Journal Entries', reports:'Reports', users:'Users', setup:'Accounting Setup', yearEnd:'Year-End Closing', settings:'Settings', lang:'AR', logout:'Sign out'}
+  ar: {app:'نظام المحاسبة', search:'ابحث في النظام...', dashboard:'الرئيسية', sales:'المبيعات', purchases:'المشتريات', customers:'العملاء', suppliers:'الموردون', inventory:'المنتجات والمخزون', expenses:'المصروفات', payments:'الصندوق والبنوك', banking:'التسوية البنكية', journals:'القيود اليومية', reports:'التقارير', users:'المستخدمون', setup:'تهيئة النظام', yearEnd:'إقفال السنة', settings:'الإعدادات', lang:'EN', logout:'تسجيل الخروج'},
+  en: {app:'Accounting System', search:'Search in the system...', dashboard:'Dashboard', sales:'Sales', purchases:'Purchases', customers:'Customers', suppliers:'Suppliers', inventory:'Products & Inventory', expenses:'Expenses', payments:'Payments & Banks', banking:'Bank Reconciliation', journals:'Journal Entries', reports:'Reports', users:'Users', setup:'Accounting Setup', yearEnd:'Year-End Closing', settings:'Settings', lang:'AR', logout:'Sign out'}
 } as const;
 
 const nav = [
-  ['/', Gauge, 'dashboard'], ['/sales', ShoppingCart, 'sales'], ['/purchases', ReceiptText, 'purchases'], ['/customers', Users, 'customers'], ['/suppliers', Building2, 'suppliers'], ['/inventory', Boxes, 'inventory'], ['/payments', WalletCards, 'payments'], ['/banking', Landmark, 'banking'], ['/journals', FileText, 'journals'], ['/reports', TrendingUp, 'reports'], ['/users', Users, 'users'], ['/setup', Wrench, 'setup'], ['/year-end', CalendarCheck2, 'yearEnd'], ['/settings', Settings, 'settings'],
+  ['/', Gauge, 'dashboard'], ['/sales', ShoppingCart, 'sales'], ['/purchases', ReceiptText, 'purchases'], ['/customers', Users, 'customers'], ['/suppliers', Building2, 'suppliers'], ['/inventory', Boxes, 'inventory'], ['/expenses', BadgeDollarSign, 'expenses'], ['/payments', WalletCards, 'payments'], ['/banking', Landmark, 'banking'], ['/journals', FileText, 'journals'], ['/reports', TrendingUp, 'reports'], ['/users', Users, 'users'], ['/setup', Wrench, 'setup'], ['/year-end', CalendarCheck2, 'yearEnd'], ['/settings', Settings, 'settings'],
 ] as const;
 
 export function ErpShell({children}:{children:ReactNode}) {
