@@ -11,7 +11,7 @@ BEGIN
     ('SalesInvoice'),('SalesInvoiceLine'),('PurchaseBill'),('PurchaseBillLine'),('TaxRate'),('ExchangeRate'),
     ('DocumentSequence'),('AuditLog'),('OutboxEvent'),('IdempotencyRecord'),('CreditNote'),('CreditNoteLine'),
     ('PaymentAllocation'),('AccountingConfig'),('BankAccount'),('BankReconciliation'),('BankStatementLine'),
-    ('DebitNote'),('DebitNoteLine'),('DebitNoteReturnAllocation')
+    ('DebitNote'),('DebitNoteLine'),('DebitNoteReturnLot')
   ) AS required(name)
   WHERE to_regclass(format('public.%I', name)) IS NULL;
   IF missing IS NOT NULL THEN
@@ -67,7 +67,8 @@ BEGIN
     AND c.relname = ANY (ARRAY[
       'Account','Customer','Supplier','Journal','Item','Warehouse','InventoryLot','InventoryMovement',
       'SalesInvoice','PurchaseBill','TaxRate','ExchangeRate','DocumentSequence','AuditLog','OutboxEvent',
-      'IdempotencyRecord','CreditNote','PaymentAllocation','BankAccount','BankReconciliation','BankStatementLine'
+      'IdempotencyRecord','CreditNote','PaymentAllocation','BankAccount','BankReconciliation','BankStatementLine',
+      'DebitNote','DebitNoteLine','DebitNoteReturnLot'
     ])
     AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity);
   IF unprotected IS NOT NULL THEN
