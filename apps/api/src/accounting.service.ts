@@ -46,4 +46,29 @@ export class AccountingService {
     if(!debit.eq(credit)) throw new BadRequestException('Journal is not balanced');
     return tx.journal.create({data:{companyId:input.companyId,fiscalPeriodId:input.fiscalPeriodId,journalNumber:input.journalNumber,sourceType:input.sourceType,sourceId:input.sourceId,transactionDate:input.transactionDate,currencyCode:input.currencyCode,exchangeRate:rate,status:JournalStatus.Posted,postedById:input.postedById,postedAt:new Date(),lines:{create:lines.map(l=>({accountId:l.accountId,transactionDebit:l.transactionDebit,transactionCredit:l.transactionCredit,baseDebit:l.baseDebit,baseCredit:l.baseCredit,customerId:l.customerId,supplierId:l.supplierId,description:l.description}))}},include:{lines:true}});
   }
+
+  async reverseJournal(companyId:string,journalId:string,reversalDate:Date,postedById?:string,reason='Journal reversal'){
+    return this.prisma.$transaction(async tx=>{
+      await tx.$queryRaw`SELECT id FROM "Journal" WHERE id=${journalId}::uuid FOR UPDATE`;
+      const original=await tx.journal.findUnique({where:{id:journalId},include:{lines:true}});
+      if(!original||original.companyId!==companyId) throw new NotFoundException('Journal not found');
+      if(original.status!==JournalStatus.Posted) throw new BadRequestException('Only posted journals can be reversed');
+      if(original.reversedJournalId) throw new BadRequestException('Journal has already been reversed');
+      const period=await tx.fiscalPeriod.findFirst({where:{fiscalYear:{companyId},startDate:{lte:reversalDate},endDate:{gte:reversalDate}}});
+      if(!period||period.status!=='Open') throw new BadRequestException('No open fiscal period for reversal date');
+      const journalNumber=await this.nextJournalNumber(tx,companyId);
+      const reversal=await this.postJournalInTransaction(tx,{companyId,fiscalPeriodId:period.id,journalNumber,sourceType:original.sourceType,sourceId:original.sourceId??undefined,transactionDate:reversalDate,currencyCode:original.currencyCode,exchangeRate:original.exchangeRate,postedById,lines:original.lines.map(l=>({accountId:l.accountId,debit:l.transactionCredit,credit:l.transactionDebit,customerId:l.customerId??undefined,supplierId:l.supplierId??undefined,description:`${reason}: ${original.journalNumber}`}))});
+      await tx.journal.update({where:{id:original.id},data:{status:JournalStatus.Reversed,reversedJournalId:reversal.id}});
+      await tx.outboxEvent.create({data:{companyId,aggregateType:'Journal',aggregateId:original.id,eventType:'JournalReversed',payload:{originalJournalId:original.id,reversalJournalId:reversal.id,reason}}});
+      return {originalJournalId:original.id,reversalJournalId:reversal.id,reversalJournalNumber:reversal.journalNumber};
+    },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+  }
+
+  private async nextJournalNumber(tx:Prisma.TransactionClient,companyId:string){
+    let seq=await tx.documentSequence.findFirst({where:{companyId,documentType:'JOURNAL'},orderBy:{id:'asc'}});
+    if(!seq) seq=await tx.documentSequence.create({data:{companyId,documentType:'JOURNAL',prefix:'JV-',padding:6}});
+    await tx.$queryRaw`SELECT id FROM "DocumentSequence" WHERE id=${seq.id}::uuid FOR UPDATE`;
+    seq=await tx.documentSequence.update({where:{id:seq.id},data:{currentNumber:{increment:1}}});
+    return `${seq.prefix}${seq.currentNumber.toString().padStart(seq.padding,'0')}`;
+  }
 }
