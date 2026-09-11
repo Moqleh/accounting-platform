@@ -1,4 +1,5 @@
 import './globals.css';
+import './extras.css';
 
 export const metadata = {
   title: 'Accounting Platform',
