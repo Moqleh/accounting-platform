@@ -1,7 +1,7 @@
 {
   "name": "@accounting/api",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "scripts": {
     "dev": "nest start --watch",
     "build": "nest build",
@@ -13,6 +13,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "ts-node prisma/seed.ts",
+    "prisma:bootstrap": "ts-node prisma/bootstrap.ts",
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
