@@ -60,7 +60,7 @@ export class ErpController {
 
   @Get('profit-loss/:companyId')
   async profitLoss(@Param('companyId') companyId:string,@Query('from') from?:string,@Query('to') to?:string){
-    const where: Prisma.JournalLineWhereInput={journal:{companyId,status:{in:['Posted','Reversed']},transactionDate:{gte:from?new Date(from):undefined,lte:to?new Date(to):undefined}},account:{type:{in:['Revenue','Expense']}}};
+    const where: Prisma.JournalLineWhereInput={journal:{companyId,status:{in:['Posted','Reversed']},sourceType:{not:'YearEndClosing'},transactionDate:{gte:from?new Date(from):undefined,lte:to?new Date(to):undefined}},account:{type:{in:['Revenue','Expense']}}};
     const lines=await this.prisma.journalLine.findMany({where,include:{account:true}});
     let revenue=new Prisma.Decimal(0),expense=new Prisma.Decimal(0);
     for(const line of lines){if(line.account.type==='Revenue') revenue=revenue.add(line.baseCredit).sub(line.baseDebit); else expense=expense.add(line.baseDebit).sub(line.baseCredit)}
@@ -73,5 +73,16 @@ export class ErpController {
     const balances=new Map<string,{code:string;name:string;type:string;balance:Prisma.Decimal}>();
     for(const line of lines){const key=line.accountId;const current=balances.get(key)??{code:line.account.code,name:line.account.name,type:line.account.type,balance:new Prisma.Decimal(0)};const movement=line.account.type==='Asset'?line.baseDebit.sub(line.baseCredit):line.baseCredit.sub(line.baseDebit);current.balance=current.balance.add(movement);balances.set(key,current)}
     return [...balances.values()].map(x=>({...x,balance:x.balance.toString()}));
+  }
+
+  @Get('inventory-valuation/:companyId')
+  async inventoryValuation(@Param('companyId') companyId:string){
+    const lots=await this.prisma.inventoryLot.findMany({where:{companyId,remainingQuantity:{gt:0}},include:{item:true,warehouse:true},orderBy:[{item:{code:'asc'}},{receivedDate:'asc'}]});
+    return lots.map(l=>({itemCode:l.item.code,itemName:l.item.name,warehouse:l.warehouse.name,receivedDate:l.receivedDate.toISOString().slice(0,10),quantity:l.remainingQuantity.toString(),unitCost:l.unitCost.toString(),value:l.remainingQuantity.mul(l.unitCost).toDecimalPlaces(4).toString()}));
+  }
+
+  @Get('account-activity/:companyId')
+  async accountActivity(@Param('companyId') companyId:string,@Query('accountId') accountId?:string,@Query('from') from?:string,@Query('to') to?:string){
+    return this.prisma.journalLine.findMany({where:{accountId:accountId||undefined,journal:{companyId,status:{in:['Posted','Reversed']},transactionDate:{gte:from?new Date(from):undefined,lte:to?new Date(to):undefined}}},include:{account:true,journal:true},orderBy:{journal:{transactionDate:'asc'}},take:1000});
   }
 }
