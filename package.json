@@ -1,7 +1,7 @@
 {
   "name": "accounting-platform",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "packageManager": "pnpm@10.15.1",
   "scripts": {
     "dev": "pnpm --parallel --filter @accounting/web --filter @accounting/api dev",
@@ -11,6 +11,6 @@
     "typecheck": "pnpm -r typecheck"
   },
   "engines": {
-    "node": ">=20.18"
+    "node": ">=22"
   }
 }
