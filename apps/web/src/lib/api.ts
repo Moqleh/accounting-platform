@@ -1,5 +1,4 @@
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
-export const DEMO_COMPANY_ID = process.env.NEXT_PUBLIC_COMPANY_ID ?? '11111111-1111-1111-1111-111111111111';
 
 export type Session={token:string;user:{id:string;email:string;fullName:string};memberships:Array<{companyId:string;companyName:string;role:string;dataScope?:string|null}>;defaultCompanyId?:string};
 
@@ -25,11 +24,12 @@ export function clearSession(){
 }
 
 export function getCompanyId(){
-  if(typeof window==='undefined') return DEMO_COMPANY_ID;
+  if(typeof window==='undefined') return '';
   const session=getSession();
+  if(!session?.memberships.length) return '';
   const selected=window.localStorage.getItem('accounting.companyId');
-  if(selected&&session?.memberships.some(m=>m.companyId===selected)) return selected;
-  return session?.defaultCompanyId??session?.memberships[0]?.companyId??DEMO_COMPANY_ID;
+  if(selected&&session.memberships.some(m=>m.companyId===selected)) return selected;
+  return session.defaultCompanyId??session.memberships[0].companyId;
 }
 
 export function setCompanyId(companyId:string){
