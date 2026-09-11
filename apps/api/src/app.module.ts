@@ -10,6 +10,7 @@ import { PaymentsController } from './payments.controller';
 import { CreditNotesController } from './credit-notes.controller';
 import { YearEndController } from './year-end.controller';
 import { AdminController } from './admin.controller';
+import { BankingController } from './banking.controller';
 import { AuthController } from './auth.controller';
 import { AccountingService } from './accounting.service';
 import { SalesService } from './sales.service';
@@ -33,7 +34,7 @@ import { PrismaService } from './prisma.service';
       signOptions: { expiresIn: '8h' },
     }),
   ],
-  controllers: [AppController, AuthController, AccountingController, ErpController, AgingController, SalesController, PurchasesController, PaymentsController, CreditNotesController, YearEndController, AdminController],
+  controllers: [AppController, AuthController, AccountingController, ErpController, AgingController, SalesController, PurchasesController, PaymentsController, CreditNotesController, YearEndController, AdminController, BankingController],
   providers: [PrismaService, TenantPrismaService, AuthService, IdempotencyService, JwtAuthGuard, RolesGuard, PermissionGuard, AccountingService, SalesService, PurchasesService, PaymentsService, CreditNotesService, YearEndService],
 })
 export class AppModule {}
