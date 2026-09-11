@@ -1,5 +1,5 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { Prisma, PrismaClientKnownRequestError } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 
 type Claim = { id:string; replay?:unknown };
@@ -18,7 +18,7 @@ export class IdempotencyService {
       const created=await tx.idempotencyRecord.create({data:{companyId,endpoint,key,payloadHash,status:'Processing',lockedAt:new Date()}});
       return {id:created.id};
     }catch(error){
-      if(!(error instanceof PrismaClientKnownRequestError)||error.code!=='P2002') throw error;
+      if(!(error instanceof Prisma.PrismaClientKnownRequestError)||error.code!=='P2002') throw error;
       const existing=await tx.idempotencyRecord.findUnique({where:{companyId_endpoint_key:{companyId,endpoint,key}}});
       if(!existing) throw error;
       if(existing.payloadHash!==payloadHash) throw new ConflictException('Idempotency key was already used with a different payload');
