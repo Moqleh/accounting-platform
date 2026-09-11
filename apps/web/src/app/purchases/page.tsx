@@ -1,0 +1,4 @@
+import { ModulePage } from '@/components/module-page';
+const columns=[{ar:'رقم الفاتورة',en:'Bill #',key:'number'},{ar:'المورد',en:'Supplier',key:'name'},{ar:'التاريخ',en:'Date',key:'date'},{ar:'الإجمالي',en:'Total',key:'total'},{ar:'الحالة',en:'Status',key:'status'}];
+const rows=[{number:'PUR-0010',name:'شركة التقنية',date:'2026-09-10',total:'18,500',status:'Posted'},{number:'PUR-0009',name:'مؤسسة الإمداد',date:'2026-09-07',total:'7,300',status:'Posted'},{number:'PUR-0008',name:'شركة الخليج',date:'2026-09-04',total:'12,600',status:'Draft'}];
+export default function Page(){return <ModulePage titleAr="المشتريات" titleEn="Purchases" subtitleAr="فواتير الموردين والاستلام والتكاليف" subtitleEn="Supplier bills, receipts and costs" columns={columns} rows={rows} actionAr="فاتورة شراء" actionEn="New Purchase Bill"/>}
