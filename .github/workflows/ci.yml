@@ -36,6 +36,7 @@ jobs:
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @accounting/api prisma:generate
       - run: pnpm --filter @accounting/api exec prisma db push --skip-generate
+      - run: psql "$DATABASE_URL" -f apps/api/prisma/security.sql
       - run: pnpm --filter @accounting/api prisma:seed
       - run: pnpm -r typecheck
       - run: pnpm -r test
