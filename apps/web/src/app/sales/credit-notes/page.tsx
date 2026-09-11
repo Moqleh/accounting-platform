@@ -1,0 +1,9 @@
+'use client';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { ErpShell, useLocale } from '@/components/erp-shell';
+import { apiGet, getCompanyId } from '@/lib/api';
+
+type Credit={id:string;creditNoteNumber:string;invoiceId:string;creditDate:string;subtotal:string;taxTotal:string;grandTotal:string;reason?:string|null;status:string;customer:string};
+export default function Page(){return <ErpShell><Body/></ErpShell>}
+function Body(){const {locale}=useLocale();const ar=locale==='ar';const companyId=getCompanyId();const [rows,setRows]=useState<Credit[]>([]);const [error,setError]=useState('');useEffect(()=>{apiGet<Credit[]>(`/reports/credit-notes/${companyId}`).then(setRows).catch(e=>setError(e instanceof Error?e.message:String(e)))},[companyId]);return <><div className="heading"><div><h1>{ar?'الإشعارات الدائنة والمرتجعات':'Credit Notes & Returns'}</h1><p>{ar?'مرتجعات مرتبطة بالفواتير مع استعادة تكلفة FIFO الأصلية':'Invoice-linked returns with original FIFO cost restoration'}</p></div><Link className="primary" href="/sales">{ar?'العودة للمبيعات':'Back to Sales'}</Link></div>{error&&<div className="card formMessage">{error}</div>}<section className="card"><div className="tableWrap"><table><thead><tr><th>{ar?'الرقم':'Credit Note #'}</th><th>{ar?'العميل':'Customer'}</th><th>{ar?'التاريخ':'Date'}</th><th>{ar?'الإجمالي':'Total'}</th><th>{ar?'السبب':'Reason'}</th><th>{ar?'الحالة':'Status'}</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td>{r.creditNoteNumber}</td><td>{r.customer}</td><td>{r.creditDate.slice(0,10)}</td><td>{Number(r.grandTotal).toLocaleString()} SAR</td><td>{r.reason??'—'}</td><td><span className="status paid">{r.status}</span></td></tr>)}</tbody></table></div>{!rows.length&&!error&&<p className="emptyState">{ar?'لا توجد مرتجعات بعد':'No credit notes yet'}</p>}</section></>}
