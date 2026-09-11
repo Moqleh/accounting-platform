@@ -15,6 +15,7 @@ import { PurchasesService } from './purchases.service';
 import { PaymentsService } from './payments.service';
 import { YearEndService } from './year-end.service';
 import { AuthService } from './auth.service';
+import { IdempotencyService } from './idempotency.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
 import { PermissionGuard } from './permission.guard';
@@ -30,6 +31,6 @@ import { PrismaService } from './prisma.service';
     }),
   ],
   controllers: [AppController, AuthController, AccountingController, ErpController, SalesController, PurchasesController, PaymentsController, YearEndController, AdminController],
-  providers: [PrismaService, TenantPrismaService, AuthService, JwtAuthGuard, RolesGuard, PermissionGuard, AccountingService, SalesService, PurchasesService, PaymentsService, YearEndService],
+  providers: [PrismaService, TenantPrismaService, AuthService, IdempotencyService, JwtAuthGuard, RolesGuard, PermissionGuard, AccountingService, SalesService, PurchasesService, PaymentsService, YearEndService],
 })
 export class AppModule {}
