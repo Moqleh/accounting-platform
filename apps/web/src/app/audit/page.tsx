@@ -1,0 +1,7 @@
+'use client';
+import { useEffect, useState } from 'react';
+import { ErpShell, useLocale } from '@/components/erp-shell';
+import { apiGet, getCompanyId } from '@/lib/api';
+type Row={id:string;action:string;entityType:string;entityId?:string|null;createdAt:string;ipAddress?:string|null;user?:{fullName:string;email:string}|null;beforePayload?:unknown;afterPayload?:unknown};
+export default function Page(){return <ErpShell><Audit/></ErpShell>}
+function Audit(){const {locale}=useLocale(),ar=locale==='ar',companyId=getCompanyId();const [rows,setRows]=useState<Row[]>([]),[error,setError]=useState('');useEffect(()=>{apiGet<Row[]>(`/admin/audit/${companyId}`).then(setRows).catch(e=>setError(e instanceof Error?e.message:String(e)))},[companyId]);return <><div className="heading"><div><h1>{ar?'سجل المراجعة':'Audit Trail'}</h1><p>{ar?'سجل غير قابل للتعديل للعمليات الحساسة والترحيلات':'Append-only history of sensitive operations and postings'}</p></div></div>{error&&<div className="card formMessage">{error}</div>}<section className="card"><div className="tableWrap"><table><thead><tr><th>{ar?'الوقت':'Time'}</th><th>{ar?'المستخدم':'User'}</th><th>{ar?'الإجراء':'Action'}</th><th>{ar?'الكيان':'Entity'}</th><th>{ar?'المعرف':'ID'}</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td>{new Date(r.createdAt).toLocaleString(ar?'ar':'en')}</td><td>{r.user?.fullName??r.user?.email??'—'}</td><td>{r.action}</td><td>{r.entityType}</td><td><code>{r.entityId??'—'}</code></td></tr>)}</tbody></table></div></section></>}
