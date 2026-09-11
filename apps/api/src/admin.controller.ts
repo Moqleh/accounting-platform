@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ItemType } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from './prisma.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
@@ -23,11 +24,15 @@ export class AdminController {
   users(@Param('companyId') companyId:string){return this.prisma.companyMembership.findMany({where:{companyId},include:{user:{select:{id:true,email:true,fullName:true,createdAt:true}}},orderBy:{createdAt:'asc'}})}
 
   @Post('users/:companyId')
-  async createUser(@Param('companyId') companyId:string,@Body() body:{email:string;fullName:string;role:string;dataScope?:string}){
+  async createUser(@Param('companyId') companyId:string,@Body() body:{email:string;fullName:string;role:string;dataScope?:string;initialPassword:string}){
     const allowed=['Admin','Owner','Accountant','Sales','Purchases','Employee'];
     if(!allowed.includes(body.role)) throw new BadRequestException('Invalid role');
-    const user=await this.prisma.user.upsert({where:{email:body.email.trim().toLowerCase()},update:{fullName:body.fullName},create:{email:body.email.trim().toLowerCase(),fullName:body.fullName}});
-    return this.prisma.companyMembership.upsert({where:{companyId_userId:{companyId,userId:user.id}},update:{role:body.role,dataScope:body.dataScope},create:{companyId,userId:user.id,role:body.role,dataScope:body.dataScope},include:{user:{select:{id:true,email:true,fullName:true,createdAt:true}}}});
+    if(!body.initialPassword||body.initialPassword.length<10) throw new BadRequestException('Initial password must contain at least 10 characters');
+    const email=body.email.trim().toLowerCase();const passwordHash=await bcrypt.hash(body.initialPassword,12);
+    const user=await this.prisma.user.upsert({where:{email},update:{fullName:body.fullName,passwordHash},create:{email,fullName:body.fullName,passwordHash}});
+    const membership=await this.prisma.companyMembership.upsert({where:{companyId_userId:{companyId,userId:user.id}},update:{role:body.role,dataScope:body.dataScope},create:{companyId,userId:user.id,role:body.role,dataScope:body.dataScope},include:{user:{select:{id:true,email:true,fullName:true,createdAt:true}}}});
+    await this.prisma.auditLog.create({data:{companyId,action:'UPSERT',entityType:'CompanyMembership',entityId:membership.id,afterPayload:{userId:user.id,email:user.email,role:body.role,dataScope:body.dataScope??null}}});
+    return membership;
   }
 
   @Get('fiscal-years/:companyId')
