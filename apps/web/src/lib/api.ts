@@ -44,20 +44,16 @@ function headers(extra?:Record<string,string>){
 }
 
 async function parseError(response:Response){const text=await response.text();try{const body=JSON.parse(text) as {message?:string|string[]};return Array.isArray(body.message)?body.message.join(', '):body.message??text}catch{return text}}
-
-export async function apiGet<T>(path:string):Promise<T>{
-  const response=await fetch(`${API_URL}${path}`,{cache:'no-store',headers:headers()});
+async function request<T>(path:string,method:'GET'|'POST'|'PATCH',body?:unknown,extraHeaders?:Record<string,string>):Promise<T>{
+  const response=await fetch(`${API_URL}${path}`,{method,cache:method==='GET'?'no-store':undefined,headers:headers(extraHeaders),...(body===undefined?{}:{body:JSON.stringify(body)})});
   if(response.status===401&&typeof window!=='undefined'){clearSession();if(window.location.pathname!=='/login')window.location.assign('/login')}
   if(!response.ok) throw new Error(`API ${response.status}: ${await parseError(response)}`);
   return response.json() as Promise<T>;
 }
 
-export async function apiPost<T>(path:string,body:unknown,extraHeaders?:Record<string,string>):Promise<T>{
-  const response=await fetch(`${API_URL}${path}`,{method:'POST',headers:headers(extraHeaders),body:JSON.stringify(body)});
-  if(response.status===401&&typeof window!=='undefined'){clearSession();if(window.location.pathname!=='/login')window.location.assign('/login')}
-  if(!response.ok) throw new Error(`API ${response.status}: ${await parseError(response)}`);
-  return response.json() as Promise<T>;
-}
+export function apiGet<T>(path:string){return request<T>(path,'GET')}
+export function apiPost<T>(path:string,body:unknown,extraHeaders?:Record<string,string>){return request<T>(path,'POST',body,extraHeaders)}
+export function apiPatch<T>(path:string,body:unknown,extraHeaders?:Record<string,string>){return request<T>(path,'PATCH',body,extraHeaders)}
 
 export function idempotencyHeaders(){return {'Idempotency-Key':crypto.randomUUID()}}
 
