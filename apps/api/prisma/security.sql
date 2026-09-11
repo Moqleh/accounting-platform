@@ -1,5 +1,5 @@
--- Database invariants that Prisma schema alone cannot express.
--- Applied after `prisma db push` in CI and can be applied to production after schema deployment.
+-- Database invariants and tenant isolation that Prisma schema alone cannot express.
+-- Run as the migration/owner role after the Prisma schema is deployed.
 
 ALTER TABLE "InventoryLot"
   DROP CONSTRAINT IF EXISTS inventory_lot_remaining_nonnegative,
@@ -11,6 +11,10 @@ ALTER TABLE "JournalLine"
     ("transactionDebit" > 0 AND "transactionCredit" = 0) OR
     ("transactionCredit" > 0 AND "transactionDebit" = 0)
   );
+
+ALTER TABLE "JournalLine"
+  DROP CONSTRAINT IF EXISTS journal_line_party_xor,
+  ADD CONSTRAINT journal_line_party_xor CHECK (NOT ("customerId" IS NOT NULL AND "supplierId" IS NOT NULL));
 
 CREATE OR REPLACE FUNCTION guard_posted_journal_mutation() RETURNS trigger AS $$
 BEGIN
@@ -27,6 +31,9 @@ BEGIN
        AND NEW."exchangeRate" = OLD."exchangeRate"
        AND NEW."sourceType" = OLD."sourceType"
        AND NEW."sourceId" IS NOT DISTINCT FROM OLD."sourceId"
+       AND NEW."postedById" IS NOT DISTINCT FROM OLD."postedById"
+       AND NEW."postedAt" IS NOT DISTINCT FROM OLD."postedAt"
+       AND NEW."createdAt" = OLD."createdAt"
     THEN
       RETURN NEW;
     END IF;
@@ -46,7 +53,7 @@ DECLARE
   target_journal uuid;
   target_status "JournalStatus";
 BEGIN
-  target_journal := COALESCE(OLD."journalId", NEW."journalId");
+  target_journal := COALESCE(NEW."journalId", OLD."journalId");
   SELECT status INTO target_status FROM "Journal" WHERE id = target_journal;
   IF target_status IN ('Posted', 'Reversed') THEN
     RAISE EXCEPTION 'Lines of posted/reversed journals are immutable';
@@ -55,9 +62,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_guard_posted_journal_line_update ON "JournalLine";
-CREATE TRIGGER trg_guard_posted_journal_line_update
-BEFORE UPDATE OR DELETE ON "JournalLine"
+DROP TRIGGER IF EXISTS trg_guard_posted_journal_line_mutation ON "JournalLine";
+CREATE TRIGGER trg_guard_posted_journal_line_mutation
+BEFORE INSERT OR UPDATE OR DELETE ON "JournalLine"
 FOR EACH ROW EXECUTE FUNCTION guard_posted_journal_line_mutation();
 
 CREATE OR REPLACE FUNCTION validate_journal_balance() RETURNS trigger AS $$
@@ -88,6 +95,40 @@ AFTER INSERT OR UPDATE ON "Journal"
 DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION validate_journal_balance();
 
+CREATE OR REPLACE FUNCTION validate_journal_line_tenant_and_leaf() RETURNS trigger AS $$
+DECLARE
+  journal_company uuid;
+  account_company uuid;
+  account_leaf boolean;
+  account_active boolean;
+  customer_company uuid;
+  supplier_company uuid;
+BEGIN
+  SELECT "companyId" INTO journal_company FROM "Journal" WHERE id = NEW."journalId";
+  SELECT "companyId", "isLeaf", "isActive" INTO account_company, account_leaf, account_active FROM "Account" WHERE id = NEW."accountId";
+  IF journal_company IS NULL OR account_company IS NULL OR journal_company <> account_company THEN
+    RAISE EXCEPTION 'Journal line account must belong to same company';
+  END IF;
+  IF NOT account_leaf OR NOT account_active THEN
+    RAISE EXCEPTION 'Journal line account must be an active leaf account';
+  END IF;
+  IF NEW."customerId" IS NOT NULL THEN
+    SELECT "companyId" INTO customer_company FROM "Customer" WHERE id = NEW."customerId";
+    IF customer_company IS DISTINCT FROM journal_company THEN RAISE EXCEPTION 'Customer must belong to same company'; END IF;
+  END IF;
+  IF NEW."supplierId" IS NOT NULL THEN
+    SELECT "companyId" INTO supplier_company FROM "Supplier" WHERE id = NEW."supplierId";
+    IF supplier_company IS DISTINCT FROM journal_company THEN RAISE EXCEPTION 'Supplier must belong to same company'; END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_validate_journal_line_tenant_and_leaf ON "JournalLine";
+CREATE TRIGGER trg_validate_journal_line_tenant_and_leaf
+BEFORE INSERT OR UPDATE ON "JournalLine"
+FOR EACH ROW EXECUTE FUNCTION validate_journal_line_tenant_and_leaf();
+
 CREATE OR REPLACE FUNCTION guard_audit_log_append_only() RETURNS trigger AS $$
 BEGIN
   RAISE EXCEPTION 'Audit log is append-only';
@@ -99,26 +140,87 @@ CREATE TRIGGER trg_audit_log_no_update
 BEFORE UPDATE OR DELETE ON "AuditLog"
 FOR EACH ROW EXECUTE FUNCTION guard_audit_log_append_only();
 
-CREATE OR REPLACE FUNCTION validate_journal_line_tenant_and_leaf() RETURNS trigger AS $$
-DECLARE
-  journal_company uuid;
-  account_company uuid;
-  account_leaf boolean;
-  account_active boolean;
-BEGIN
-  SELECT "companyId" INTO journal_company FROM "Journal" WHERE id = NEW."journalId";
-  SELECT "companyId", "isLeaf", "isActive" INTO account_company, account_leaf, account_active FROM "Account" WHERE id = NEW."accountId";
-  IF journal_company IS NULL OR account_company IS NULL OR journal_company <> account_company THEN
-    RAISE EXCEPTION 'Journal line account must belong to same company';
+-- Runtime tenant role. Production login roles should be granted this role, not table ownership.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'accounting_app') THEN
+    CREATE ROLE accounting_app NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
   END IF;
-  IF NOT account_leaf OR NOT account_active THEN
-    RAISE EXCEPTION 'Journal line account must be an active leaf account';
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+END $$;
+GRANT USAGE ON SCHEMA public TO accounting_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO accounting_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO accounting_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO accounting_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO accounting_app;
 
-DROP TRIGGER IF EXISTS trg_validate_journal_line_tenant_and_leaf ON "JournalLine";
-CREATE TRIGGER trg_validate_journal_line_tenant_and_leaf
-BEFORE INSERT OR UPDATE ON "JournalLine"
-FOR EACH ROW EXECUTE FUNCTION validate_journal_line_tenant_and_leaf();
+-- The API sets these transaction-local settings after authenticating a membership:
+--   SET LOCAL app.current_company_id = '<uuid>';
+--   SET LOCAL app.current_user_id = '<uuid>';
+CREATE OR REPLACE FUNCTION app_company_id() RETURNS uuid AS $$
+  SELECT NULLIF(current_setting('app.current_company_id', true), '')::uuid
+$$ LANGUAGE sql STABLE;
+
+CREATE OR REPLACE FUNCTION app_user_id() RETURNS uuid AS $$
+  SELECT NULLIF(current_setting('app.current_user_id', true), '')::uuid
+$$ LANGUAGE sql STABLE;
+
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'Account','Customer','Supplier','Journal','Item','Warehouse','InventoryLot','InventoryMovement',
+    'SalesInvoice','PurchaseBill','TaxRate','ExchangeRate','DocumentSequence','AuditLog','OutboxEvent','IdempotencyRecord'
+  ] LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
+    EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', t);
+    EXECUTE format('CREATE POLICY tenant_isolation ON %I TO accounting_app USING ("companyId" = app_company_id()) WITH CHECK ("companyId" = app_company_id())', t);
+  END LOOP;
+END $$;
+
+ALTER TABLE "CompanyMembership" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "CompanyMembership" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS membership_scope ON "CompanyMembership";
+CREATE POLICY membership_scope ON "CompanyMembership" TO accounting_app
+  USING ("companyId" = app_company_id() AND "userId" = app_user_id())
+  WITH CHECK ("companyId" = app_company_id() AND "userId" = app_user_id());
+
+ALTER TABLE "FiscalYear" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "FiscalYear" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS fiscal_year_tenant ON "FiscalYear";
+CREATE POLICY fiscal_year_tenant ON "FiscalYear" TO accounting_app
+  USING ("companyId" = app_company_id()) WITH CHECK ("companyId" = app_company_id());
+
+ALTER TABLE "FiscalPeriod" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "FiscalPeriod" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS fiscal_period_tenant ON "FiscalPeriod";
+CREATE POLICY fiscal_period_tenant ON "FiscalPeriod" TO accounting_app
+USING (EXISTS (SELECT 1 FROM "FiscalYear" fy WHERE fy.id = "FiscalPeriod"."fiscalYearId" AND fy."companyId" = app_company_id()))
+WITH CHECK (EXISTS (SELECT 1 FROM "FiscalYear" fy WHERE fy.id = "FiscalPeriod"."fiscalYearId" AND fy."companyId" = app_company_id()));
+
+ALTER TABLE "JournalLine" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "JournalLine" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS journal_line_tenant ON "JournalLine";
+CREATE POLICY journal_line_tenant ON "JournalLine" TO accounting_app
+USING (EXISTS (SELECT 1 FROM "Journal" j WHERE j.id = "JournalLine"."journalId" AND j."companyId" = app_company_id()))
+WITH CHECK (EXISTS (SELECT 1 FROM "Journal" j WHERE j.id = "JournalLine"."journalId" AND j."companyId" = app_company_id()));
+
+ALTER TABLE "SalesInvoiceLine" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "SalesInvoiceLine" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS sales_line_tenant ON "SalesInvoiceLine";
+CREATE POLICY sales_line_tenant ON "SalesInvoiceLine" TO accounting_app
+USING (EXISTS (SELECT 1 FROM "SalesInvoice" i WHERE i.id = "SalesInvoiceLine"."invoiceId" AND i."companyId" = app_company_id()))
+WITH CHECK (EXISTS (SELECT 1 FROM "SalesInvoice" i WHERE i.id = "SalesInvoiceLine"."invoiceId" AND i."companyId" = app_company_id()));
+
+ALTER TABLE "PurchaseBillLine" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "PurchaseBillLine" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS purchase_line_tenant ON "PurchaseBillLine";
+CREATE POLICY purchase_line_tenant ON "PurchaseBillLine" TO accounting_app
+USING (EXISTS (SELECT 1 FROM "PurchaseBill" b WHERE b.id = "PurchaseBillLine"."billId" AND b."companyId" = app_company_id()))
+WITH CHECK (EXISTS (SELECT 1 FROM "PurchaseBill" b WHERE b.id = "PurchaseBillLine"."billId" AND b."companyId" = app_company_id()));
+
+ALTER TABLE "InventoryAllocation" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "InventoryAllocation" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS allocation_tenant ON "InventoryAllocation";
+CREATE POLICY allocation_tenant ON "InventoryAllocation" TO accounting_app
+USING (EXISTS (SELECT 1 FROM "InventoryMovement" m WHERE m.id = "InventoryAllocation"."movementId" AND m."companyId" = app_company_id()))
+WITH CHECK (EXISTS (SELECT 1 FROM "InventoryMovement" m WHERE m.id = "InventoryAllocation"."movementId" AND m."companyId" = app_company_id()));
