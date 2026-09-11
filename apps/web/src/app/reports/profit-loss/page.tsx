@@ -1,0 +1,2 @@
+import { ReportTable } from '@/components/report-table';
+export default function Page(){return <ReportTable titleAr="قائمة الدخل" titleEn="Income Statement" subtitleAr="الإيرادات والمصروفات وصافي الربح" subtitleEn="Revenue, expenses and net profit" path="/erp/profit-loss" columns={[{key:'revenue',ar:'الإيرادات',en:'Revenue'},{key:'expense',ar:'المصروفات',en:'Expenses'},{key:'netProfit',ar:'صافي الربح',en:'Net Profit'}]}/>}
