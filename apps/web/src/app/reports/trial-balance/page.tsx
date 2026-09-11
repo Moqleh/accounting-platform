@@ -1,0 +1,2 @@
+import { ReportTable } from '@/components/report-table';
+export default function Page(){return <ReportTable titleAr="ميزان المراجعة" titleEn="Trial Balance" subtitleAr="أرصدة الحسابات المدينة والدائنة بالعملة الأساسية" subtitleEn="Account debit and credit balances in base currency" path="/erp/trial-balance" columns={[{key:'accountCode',ar:'رمز الحساب',en:'Account Code'},{key:'accountName',ar:'اسم الحساب',en:'Account Name'},{key:'debit',ar:'مدين',en:'Debit'},{key:'credit',ar:'دائن',en:'Credit'}]}/>}
