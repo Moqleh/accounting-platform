@@ -1,0 +1,4 @@
+import { ModulePage } from '@/components/module-page';
+const columns=[{ar:'المرجع',en:'Reference',key:'ref'},{ar:'النوع',en:'Type',key:'type'},{ar:'الطرف',en:'Party',key:'party'},{ar:'التاريخ',en:'Date',key:'date'},{ar:'المبلغ',en:'Amount',key:'amount'},{ar:'الحالة',en:'Status',key:'status'}];
+const rows=[{ref:'RCPT-0021',type:'Customer Receipt',party:'Al Noor Company',date:'2026-09-10',amount:'12,450',status:'Posted'},{ref:'PAY-0014',type:'Supplier Payment',party:'Tech Company',date:'2026-09-09',amount:'8,000',status:'Posted'},{ref:'RCPT-0020',type:'Customer Receipt',party:'Al Amal Co.',date:'2026-09-08',amount:'5,000',status:'Posted'}];
+export default function Page(){return <ModulePage titleAr="الصندوق والبنوك" titleEn="Cash & Banks" subtitleAr="سندات القبض والصرف والحسابات البنكية" subtitleEn="Receipts, payments and bank accounts" columns={columns} rows={rows} actionAr="حركة جديدة" actionEn="New Transaction"/>}
