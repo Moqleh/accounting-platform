@@ -140,6 +140,62 @@ CREATE TRIGGER trg_audit_log_no_update
 BEFORE UPDATE OR DELETE ON "AuditLog"
 FOR EACH ROW EXECUTE FUNCTION guard_audit_log_append_only();
 
+-- Operational extension tables kept in SQL until promoted into the Prisma schema.
+CREATE TABLE IF NOT EXISTS "CreditNote" (
+  id uuid PRIMARY KEY,
+  "companyId" uuid NOT NULL REFERENCES "Company"(id) ON DELETE RESTRICT,
+  "creditNoteNumber" text NOT NULL,
+  "customerId" uuid NOT NULL REFERENCES "Customer"(id) ON DELETE RESTRICT,
+  "invoiceId" uuid NOT NULL REFERENCES "SalesInvoice"(id) ON DELETE RESTRICT,
+  status text NOT NULL DEFAULT 'Posted' CHECK (status IN ('Draft','Posted','Cancelled')),
+  "creditDate" timestamptz NOT NULL,
+  subtotal numeric(18,4) NOT NULL CHECK (subtotal >= 0),
+  "taxTotal" numeric(18,4) NOT NULL CHECK ("taxTotal" >= 0),
+  "grandTotal" numeric(18,4) NOT NULL CHECK ("grandTotal" >= 0),
+  reason text,
+  "createdAt" timestamptz NOT NULL DEFAULT now(),
+  UNIQUE ("companyId", "creditNoteNumber")
+);
+
+CREATE TABLE IF NOT EXISTS "CreditNoteLine" (
+  id uuid PRIMARY KEY,
+  "creditNoteId" uuid NOT NULL REFERENCES "CreditNote"(id) ON DELETE RESTRICT,
+  "invoiceLineId" uuid NOT NULL REFERENCES "SalesInvoiceLine"(id) ON DELETE RESTRICT,
+  "itemId" uuid NOT NULL REFERENCES "Item"(id) ON DELETE RESTRICT,
+  quantity numeric(18,4) NOT NULL CHECK (quantity > 0),
+  "unitPrice" numeric(18,4) NOT NULL CHECK ("unitPrice" >= 0),
+  "taxRateSnapshot" numeric(9,6) NOT NULL DEFAULT 0,
+  "taxAmount" numeric(18,4) NOT NULL DEFAULT 0 CHECK ("taxAmount" >= 0),
+  "lineTotal" numeric(18,4) NOT NULL CHECK ("lineTotal" >= 0)
+);
+CREATE INDEX IF NOT EXISTS credit_note_line_invoice_line_idx ON "CreditNoteLine"("invoiceLineId");
+
+CREATE TABLE IF NOT EXISTS "CreditNoteReturnAllocation" (
+  id uuid PRIMARY KEY,
+  "creditNoteLineId" uuid NOT NULL REFERENCES "CreditNoteLine"(id) ON DELETE RESTRICT,
+  "inventoryAllocationId" uuid NOT NULL REFERENCES "InventoryAllocation"(id) ON DELETE RESTRICT,
+  "lotId" uuid NOT NULL REFERENCES "InventoryLot"(id) ON DELETE RESTRICT,
+  quantity numeric(18,4) NOT NULL CHECK (quantity > 0),
+  "unitCost" numeric(18,4) NOT NULL CHECK ("unitCost" >= 0),
+  "totalCost" numeric(18,4) NOT NULL CHECK ("totalCost" >= 0),
+  UNIQUE ("creditNoteLineId", "inventoryAllocationId")
+);
+
+CREATE TABLE IF NOT EXISTS "PaymentAllocation" (
+  id uuid PRIMARY KEY,
+  "companyId" uuid NOT NULL REFERENCES "Company"(id) ON DELETE RESTRICT,
+  "journalId" uuid NOT NULL REFERENCES "Journal"(id) ON DELETE RESTRICT,
+  "salesInvoiceId" uuid REFERENCES "SalesInvoice"(id) ON DELETE RESTRICT,
+  "purchaseBillId" uuid REFERENCES "PurchaseBill"(id) ON DELETE RESTRICT,
+  amount numeric(18,4) NOT NULL CHECK (amount > 0),
+  "createdAt" timestamptz NOT NULL DEFAULT now(),
+  CHECK (("salesInvoiceId" IS NOT NULL)::int + ("purchaseBillId" IS NOT NULL)::int = 1)
+);
+CREATE INDEX IF NOT EXISTS payment_allocation_sales_idx ON "PaymentAllocation"("companyId","salesInvoiceId");
+CREATE INDEX IF NOT EXISTS payment_allocation_purchase_idx ON "PaymentAllocation"("companyId","purchaseBillId");
+CREATE UNIQUE INDEX IF NOT EXISTS payment_allocation_journal_sales_unique ON "PaymentAllocation"("journalId","salesInvoiceId") WHERE "salesInvoiceId" IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS payment_allocation_journal_purchase_unique ON "PaymentAllocation"("journalId","purchaseBillId") WHERE "purchaseBillId" IS NOT NULL;
+
 -- Runtime tenant role. Production login roles should be granted this role, not table ownership.
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'accounting_app') THEN
@@ -152,9 +208,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO accounting_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO accounting_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO accounting_app;
 
--- The API sets these transaction-local settings after authenticating a membership:
---   SET LOCAL app.current_company_id = '<uuid>';
---   SET LOCAL app.current_user_id = '<uuid>';
+-- The API sets these transaction-local settings after authenticating a membership.
 CREATE OR REPLACE FUNCTION app_company_id() RETURNS uuid AS $$
   SELECT NULLIF(current_setting('app.current_company_id', true), '')::uuid
 $$ LANGUAGE sql STABLE;
@@ -168,7 +222,8 @@ DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
     'Account','Customer','Supplier','Journal','Item','Warehouse','InventoryLot','InventoryMovement',
-    'SalesInvoice','PurchaseBill','TaxRate','ExchangeRate','DocumentSequence','AuditLog','OutboxEvent','IdempotencyRecord'
+    'SalesInvoice','PurchaseBill','TaxRate','ExchangeRate','DocumentSequence','AuditLog','OutboxEvent','IdempotencyRecord',
+    'CreditNote','PaymentAllocation'
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
@@ -224,3 +279,17 @@ DROP POLICY IF EXISTS allocation_tenant ON "InventoryAllocation";
 CREATE POLICY allocation_tenant ON "InventoryAllocation" TO accounting_app
 USING (EXISTS (SELECT 1 FROM "InventoryMovement" m WHERE m.id = "InventoryAllocation"."movementId" AND m."companyId" = app_company_id()))
 WITH CHECK (EXISTS (SELECT 1 FROM "InventoryMovement" m WHERE m.id = "InventoryAllocation"."movementId" AND m."companyId" = app_company_id()));
+
+ALTER TABLE "CreditNoteLine" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "CreditNoteLine" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS credit_note_line_tenant ON "CreditNoteLine";
+CREATE POLICY credit_note_line_tenant ON "CreditNoteLine" TO accounting_app
+USING (EXISTS (SELECT 1 FROM "CreditNote" c WHERE c.id = "CreditNoteLine"."creditNoteId" AND c."companyId" = app_company_id()))
+WITH CHECK (EXISTS (SELECT 1 FROM "CreditNote" c WHERE c.id = "CreditNoteLine"."creditNoteId" AND c."companyId" = app_company_id()));
+
+ALTER TABLE "CreditNoteReturnAllocation" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "CreditNoteReturnAllocation" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS credit_return_allocation_tenant ON "CreditNoteReturnAllocation";
+CREATE POLICY credit_return_allocation_tenant ON "CreditNoteReturnAllocation" TO accounting_app
+USING (EXISTS (SELECT 1 FROM "CreditNoteLine" cl JOIN "CreditNote" c ON c.id=cl."creditNoteId" WHERE cl.id="CreditNoteReturnAllocation"."creditNoteLineId" AND c."companyId"=app_company_id()))
+WITH CHECK (EXISTS (SELECT 1 FROM "CreditNoteLine" cl JOIN "CreditNote" c ON c.id=cl."creditNoteId" WHERE cl.id="CreditNoteReturnAllocation"."creditNoteLineId" AND c."companyId"=app_company_id()));
