@@ -1,4 +1,5 @@
 import { AccountType, ItemType, PrismaClient } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -6,7 +7,9 @@ async function main(){
   await prisma.currency.upsert({where:{code:'SAR'},update:{},create:{code:'SAR',name:'Saudi Riyal',symbol:'ر.س',decimalPlaces:2}});
   await prisma.currency.upsert({where:{code:'USD'},update:{},create:{code:'USD',name:'US Dollar',symbol:'$',decimalPlaces:2}});
   const company=await prisma.company.upsert({where:{id:'11111111-1111-1111-1111-111111111111'},update:{name:'Example Trading Company'},create:{id:'11111111-1111-1111-1111-111111111111',name:'Example Trading Company',taxNumber:'310000000000003',baseCurrencyCode:'SAR'}});
-  const user=await prisma.user.upsert({where:{email:'admin@example.com'},update:{fullName:'Mohammed Admin'},create:{email:'admin@example.com',fullName:'Mohammed Admin'}});
+  const seedPassword=process.env.SEED_ADMIN_PASSWORD;
+  const passwordHash=seedPassword?await bcrypt.hash(seedPassword,12):undefined;
+  const user=await prisma.user.upsert({where:{email:'admin@example.com'},update:{fullName:'Mohammed Admin',...(passwordHash?{passwordHash}:{})},create:{email:'admin@example.com',fullName:'Mohammed Admin',passwordHash}});
   await prisma.companyMembership.upsert({where:{companyId_userId:{companyId:company.id,userId:user.id}},update:{role:'Admin',dataScope:'all'},create:{companyId:company.id,userId:user.id,role:'Admin',dataScope:'all'}});
   const year=await prisma.fiscalYear.upsert({where:{companyId_name:{companyId:company.id,name:'FY2026'}},update:{},create:{companyId:company.id,name:'FY2026',startDate:new Date('2026-01-01'),endDate:new Date('2026-12-31')}});
   for(let m=1;m<=12;m++){const start=new Date(Date.UTC(2026,m-1,1));const end=new Date(Date.UTC(2026,m,0));await prisma.fiscalPeriod.upsert({where:{fiscalYearId_number:{fiscalYearId:year.id,number:m}},update:{},create:{fiscalYearId:year.id,number:m,startDate:start,endDate:end}})}
@@ -25,6 +28,6 @@ async function main(){
   const lotCount=await prisma.inventoryLot.count({where:{companyId:company.id,itemId:laptop.id,warehouseId:warehouse.id}});
   if(!lotCount) await prisma.inventoryLot.create({data:{companyId:company.id,itemId:laptop.id,warehouseId:warehouse.id,receivedDate:new Date('2026-09-01T08:00:00Z'),unitCost:'2800',initialQuantity:'20',remainingQuantity:'20'}});
   for(const [documentType,prefix] of [['SALES_INVOICE','INV-'],['PURCHASE_BILL','PUR-'],['JOURNAL','JV-']] as const){await prisma.documentSequence.upsert({where:{companyId_fiscalYearId_branchCode_documentType:{companyId:company.id,fiscalYearId:year.id,branchCode:'MAIN',documentType}},update:{prefix},create:{companyId:company.id,fiscalYearId:year.id,branchCode:'MAIN',documentType,prefix,currentNumber:0n,padding:6}})}
-  console.log({companyId:company.id,userId:user.id,taxRateId:tax.id});
+  console.log({companyId:company.id,userId:user.id,taxRateId:tax.id,adminEmail:user.email,passwordConfigured:Boolean(passwordHash)});
 }
 main().catch(e=>{console.error(e);process.exit(1)}).finally(()=>prisma.$disconnect());
