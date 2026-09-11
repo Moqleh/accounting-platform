@@ -1,0 +1,2 @@
+import { ReportTable } from '@/components/report-table';
+export default function Page(){return <ReportTable titleAr="الميزانية العمومية" titleEn="Balance Sheet" subtitleAr="الأصول والالتزامات وحقوق الملكية" subtitleEn="Assets, liabilities and equity" path="/erp/balance-sheet" columns={[{key:'code',ar:'رمز الحساب',en:'Account Code'},{key:'name',ar:'اسم الحساب',en:'Account Name'},{key:'type',ar:'النوع',en:'Type'},{key:'balance',ar:'الرصيد',en:'Balance'}]}/>}
