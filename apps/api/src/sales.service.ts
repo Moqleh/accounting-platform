@@ -3,13 +3,14 @@ import { DocumentStatus, JournalSourceType, Prisma } from '@prisma/client';
 import { PrismaService } from './prisma.service';
 import { AccountingService } from './accounting.service';
 import { IdempotencyService } from './idempotency.service';
+import { PostingConfigService } from './posting-config.service';
 
 type SalesLineInput = { itemId:string; quantity:string; unitPrice:string; taxRateId?:string };
 type SalesInput = { companyId:string; customerId:string; warehouseId:string; invoiceDate:Date; currencyCode:string; exchangeRate:string; postedById?:string; lines:SalesLineInput[] };
 
 @Injectable()
 export class SalesService {
-  constructor(private readonly prisma:PrismaService, private readonly accounting:AccountingService, private readonly idempotency:IdempotencyService){}
+  constructor(private readonly prisma:PrismaService, private readonly accounting:AccountingService, private readonly idempotency:IdempotencyService, private readonly postingConfig:PostingConfigService){}
 
   async createAndPost(input:SalesInput,idempotencyKey?:string){
     return this.prisma.$transaction(async tx=>{
@@ -21,10 +22,12 @@ export class SalesService {
       if(!customer||customer.companyId!==input.companyId||!customer.isActive) throw new BadRequestException('Invalid customer');
       const warehouse=await tx.warehouse.findUnique({where:{id:input.warehouseId}});
       if(!warehouse||warehouse.companyId!==input.companyId||!warehouse.isActive) throw new BadRequestException('Invalid warehouse');
-      const period=await tx.fiscalPeriod.findFirst({where:{fiscalYear:{companyId:input.companyId},startDate:{lte:input.invoiceDate},endDate:{gte:input.invoiceDate}}});
+      const period=await tx.fiscalPeriod.findFirst({where:{fiscalYear:{companyId:input.companyId,status:{not:'Closed'}},startDate:{lte:input.invoiceDate},endDate:{gte:input.invoiceDate}}});
       if(!period||period.status==='Hard_Closed') throw new BadRequestException('No postable fiscal period for invoice date');
       const company=await tx.company.findUnique({where:{id:input.companyId}}); if(!company) throw new NotFoundException('Company not found');
-      const ar=await tx.account.findFirst({where:{companyId:input.companyId,code:'1120',isLeaf:true,isActive:true}}); if(!ar) throw new BadRequestException('Accounts receivable account is not configured');
+      const currencyCode=input.currencyCode||company.baseCurrencyCode;const currency=await tx.currency.findUnique({where:{code:currencyCode}});if(!currency)throw new BadRequestException('Unsupported currency');
+      const fxRate=new Prisma.Decimal(input.exchangeRate||'1');if(fxRate.lte(0))throw new BadRequestException('Exchange rate must be positive');if(currencyCode===company.baseCurrencyCode&&!fxRate.eq(1))throw new BadRequestException('Base currency exchange rate must be 1');
+      const config=await this.postingConfig.get(tx,input.companyId);
       const itemIds=[...new Set(input.lines.map(l=>l.itemId))];
       const items=await tx.item.findMany({where:{companyId:input.companyId,id:{in:itemIds},isActive:true}});
       if(items.length!==itemIds.length) throw new BadRequestException('Invalid item');
@@ -56,16 +59,18 @@ export class SalesService {
           for(const lot of lots){if(remaining.lte(0))break;const take=Prisma.Decimal.min(remaining,lot.remainingQuantity);if(take.lte(0))continue;const cost=take.mul(lot.unitCost).toDecimalPlaces(4);await tx.inventoryLot.update({where:{id:lot.id},data:{remainingQuantity:{decrement:take}}});allocs.push({lotId:lot.id,quantity:take,unitCost:lot.unitCost,totalCost:cost});lineCogs=lineCogs.add(cost);remaining=remaining.sub(take)}
           if(remaining.gt(0)) throw new BadRequestException(`Insufficient stock for ${item.code}`);
           cogsTotal=cogsTotal.add(lineCogs); inventoryOps.push({itemId:item.id,quantity:qty,allocs,totalCost:lineCogs});
-          journalLines.push({accountId:item.cogsAccountId,debit:lineCogs.toString(),description:`COGS ${invoiceNumber}`},{accountId:item.inventoryAccountId,credit:lineCogs.toString(),description:`Inventory ${invoiceNumber}`});
+          const transactionCogs=lineCogs.div(fxRate).toDecimalPlaces(4);
+          journalLines.push({accountId:item.cogsAccountId,debit:transactionCogs.toString(),description:`COGS ${invoiceNumber}`},{accountId:item.inventoryAccountId,credit:transactionCogs.toString(),description:`Inventory ${invoiceNumber}`});
         }
       }
-      const grand=subtotal.add(taxTotal); journalLines.unshift({accountId:ar.id,debit:grand.toString(),customerId:input.customerId,description:`Invoice ${invoiceNumber}`});
+      const grand=subtotal.add(taxTotal); journalLines.unshift({accountId:config.receivableAccountId,debit:grand.toString(),customerId:input.customerId,description:`Invoice ${invoiceNumber}`});
       const invoice=await tx.salesInvoice.create({data:{companyId:input.companyId,invoiceNumber,customerId:input.customerId,status:DocumentStatus.Draft,invoiceDate:input.invoiceDate,subtotal,taxTotal,grandTotal:grand,lines:{create:prepared}},include:{lines:true,customer:true}});
       for(const op of inventoryOps){const movement=await tx.inventoryMovement.create({data:{companyId:input.companyId,itemId:op.itemId,warehouseId:input.warehouseId,quantity:op.quantity.neg(),unitCost:op.quantity.eq(0)?0:op.totalCost.div(op.quantity),totalCost:op.totalCost.neg(),movementDate:input.invoiceDate,referenceType:'SalesInvoice',referenceId:invoice.id}});for(const a of op.allocs)await tx.inventoryAllocation.create({data:{movementId:movement.id,lotId:a.lotId,quantity:a.quantity,unitCost:a.unitCost,totalCost:a.totalCost}})}
-      const journal=await this.accounting.postJournalInTransaction(tx,{companyId:input.companyId,fiscalPeriodId:period.id,journalNumber,sourceType:JournalSourceType.SalesInvoice,sourceId:invoice.id,transactionDate:input.invoiceDate,currencyCode:input.currencyCode||company.baseCurrencyCode,exchangeRate:input.exchangeRate||'1',postedById:input.postedById,lines:journalLines});
+      const journal=await this.accounting.postJournalInTransaction(tx,{companyId:input.companyId,fiscalPeriodId:period.id,journalNumber,sourceType:JournalSourceType.SalesInvoice,sourceId:invoice.id,transactionDate:input.invoiceDate,currencyCode,exchangeRate:fxRate,postedById:input.postedById,lines:journalLines});
       const postedInvoice=await tx.salesInvoice.update({where:{id:invoice.id},data:{status:DocumentStatus.Posted},include:{lines:true,customer:true}});
-      await tx.outboxEvent.create({data:{companyId:input.companyId,aggregateType:'SalesInvoice',aggregateId:invoice.id,eventType:'SalesInvoicePosted',payload:{invoiceId:invoice.id,journalId:journal.id,total:grand.toString()}}});
-      const result={invoice:postedInvoice,journalId:journal.id,cogs:cogsTotal.toString()};
+      await tx.outboxEvent.create({data:{companyId:input.companyId,aggregateType:'SalesInvoice',aggregateId:invoice.id,eventType:'SalesInvoicePosted',payload:{invoiceId:invoice.id,journalId:journal.id,total:grand.toString(),currencyCode,exchangeRate:fxRate.toString()}}});
+      await tx.auditLog.create({data:{companyId:input.companyId,userId:input.postedById,action:'POST',entityType:'SalesInvoice',entityId:invoice.id,afterPayload:{invoiceNumber,total:grand.toString(),currencyCode,exchangeRate:fxRate.toString(),journalId:journal.id}}});
+      const result={invoice:postedInvoice,journalId:journal.id,cogs:cogsTotal.toString(),currencyCode,exchangeRate:fxRate.toString()};
       await this.idempotency.complete(tx,claim,201,result);
       return result;
     },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
