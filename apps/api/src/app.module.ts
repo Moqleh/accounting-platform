@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { AppController } from './app.controller';
 import { AccountingController } from './accounting.controller';
 import { ErpController } from './erp.controller';
+import { AgingController } from './aging.controller';
 import { SalesController } from './sales.controller';
 import { PurchasesController } from './purchases.controller';
 import { PaymentsController } from './payments.controller';
@@ -32,7 +33,7 @@ import { PrismaService } from './prisma.service';
       signOptions: { expiresIn: '8h' },
     }),
   ],
-  controllers: [AppController, AuthController, AccountingController, ErpController, SalesController, PurchasesController, PaymentsController, CreditNotesController, YearEndController, AdminController],
+  controllers: [AppController, AuthController, AccountingController, ErpController, AgingController, SalesController, PurchasesController, PaymentsController, CreditNotesController, YearEndController, AdminController],
   providers: [PrismaService, TenantPrismaService, AuthService, IdempotencyService, JwtAuthGuard, RolesGuard, PermissionGuard, AccountingService, SalesService, PurchasesService, PaymentsService, CreditNotesService, YearEndService],
 })
 export class AppModule {}
