@@ -41,11 +41,12 @@ jobs:
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @accounting/api prisma:generate
       - run: pnpm --filter @accounting/api exec prisma db push --skip-generate
-      - name: Apply database security invariants
+      - name: Apply database security invariants and extensions
         shell: bash
         run: |
           PSQL_URL="${DATABASE_URL%%\?*}"
           psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/security.sql
+          psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/banking.sql
       - run: pnpm --filter @accounting/api prisma:seed
       - run: pnpm -r typecheck
       - run: pnpm -r test
