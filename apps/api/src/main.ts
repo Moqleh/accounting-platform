@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 
 function corsOrigins() {
@@ -15,7 +16,7 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.enableShutdownHooks();
   app.enableCors({ origin: corsOrigins(), credentials: true });
-  app.use((_, response, next) => {
+  app.use((_request: Request, response: Response, next: NextFunction) => {
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('X-Frame-Options', 'DENY');
     response.setHeader('Referrer-Policy', 'same-origin');
