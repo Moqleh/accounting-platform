@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Headers, Post, Req, UseGuards } from '@nestjs/common';
 import { SalesService } from './sales.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
@@ -11,7 +11,7 @@ export class SalesController {
 
   @RequirePermission('sales.write')
   @Post('invoice')
-  create(@Req() req:any,@Body() body:{companyId:string;customerId:string;warehouseId:string;invoiceDate:string;currencyCode:string;exchangeRate:string;lines:Array<{itemId:string;quantity:string;unitPrice:string;taxRateId?:string}>}){
-    return this.sales.createAndPost({...body,postedById:req.user.sub,invoiceDate:new Date(body.invoiceDate)});
+  create(@Req() req:any,@Headers('idempotency-key') idempotencyKey:string|undefined,@Body() body:{companyId:string;customerId:string;warehouseId:string;invoiceDate:string;currencyCode:string;exchangeRate:string;lines:Array<{itemId:string;quantity:string;unitPrice:string;taxRateId?:string}>}){
+    return this.sales.createAndPost({...body,postedById:req.user.sub,invoiceDate:new Date(body.invoiceDate)},idempotencyKey);
   }
 }
