@@ -26,6 +26,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://accounting:accounting@localhost:5432/accounting?schema=public
       JWT_SECRET: ci-only-not-for-production
+      CORS_ORIGINS: http://localhost:3000
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -36,6 +37,7 @@ jobs:
           node-version: 22
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @accounting/api prisma:generate
+      - run: pnpm --filter @accounting/api exec prisma validate
       - run: pnpm --filter @accounting/api exec prisma db push --skip-generate
       - name: Apply database security invariants and extensions
         shell: bash
@@ -46,6 +48,11 @@ jobs:
           psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/posting-config.sql
           psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/purchase-returns.sql
       - run: pnpm --filter @accounting/api prisma:seed
+      - name: Verify database invariants
+        shell: bash
+        run: |
+          PSQL_URL="${DATABASE_URL%%\?*}"
+          psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/qa-smoke.sql
       - run: pnpm -r typecheck
       - run: pnpm -r test
       - run: pnpm -r build
