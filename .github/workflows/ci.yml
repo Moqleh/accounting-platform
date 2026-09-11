@@ -9,6 +9,22 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: accounting
+          POSTGRES_PASSWORD: accounting
+          POSTGRES_DB: accounting
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U accounting -d accounting"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      DATABASE_URL: postgresql://accounting:accounting@localhost:5432/accounting?schema=public
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -19,5 +35,8 @@ jobs:
           node-version: 22
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @accounting/api prisma:generate
+      - run: pnpm --filter @accounting/api exec prisma db push --skip-generate
+      - run: pnpm --filter @accounting/api prisma:seed
       - run: pnpm -r typecheck
+      - run: pnpm -r test
       - run: pnpm -r build
