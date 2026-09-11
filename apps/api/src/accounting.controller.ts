@@ -1,18 +1,24 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
 import { JournalSourceType } from '@prisma/client';
 import { AccountingService } from './accounting.service';
+import { JwtAuthGuard } from './jwt-auth.guard';
+import { RolesGuard } from './roles.guard';
+import { PermissionGuard, RequirePermission } from './permission.guard';
 
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionGuard)
 @Controller('accounting')
 export class AccountingController {
   constructor(private readonly accounting: AccountingService) {}
 
+  @RequirePermission('accounting.write')
   @Post('journals/post')
-  post(@Body() body:{companyId:string;fiscalPeriodId:string;journalNumber:string;sourceType:JournalSourceType;sourceId?:string;transactionDate:string;currencyCode:string;exchangeRate:string;postedById?:string;lines:Array<{accountId:string;debit?:string;credit?:string;customerId?:string;supplierId?:string;description?:string}>}){
-    return this.accounting.postJournal({...body,transactionDate:new Date(body.transactionDate)});
+  post(@Req() req:any,@Body() body:{companyId:string;fiscalPeriodId:string;journalNumber:string;sourceType:JournalSourceType;sourceId?:string;transactionDate:string;currencyCode:string;exchangeRate:string;lines:Array<{accountId:string;debit?:string;credit?:string;customerId?:string;supplierId?:string;description?:string}>}){
+    return this.accounting.postJournal({...body,postedById:req.user.sub,transactionDate:new Date(body.transactionDate)});
   }
 
+  @RequirePermission('accounting.write')
   @Post('journals/reverse')
-  reverse(@Body() body:{companyId:string;journalId:string;reversalDate:string;postedById?:string;reason?:string}){
-    return this.accounting.reverseJournal(body.companyId,body.journalId,new Date(body.reversalDate),body.postedById,body.reason);
+  reverse(@Req() req:any,@Body() body:{companyId:string;journalId:string;reversalDate:string;reason?:string}){
+    return this.accounting.reverseJournal(body.companyId,body.journalId,new Date(body.reversalDate),req.user.sub,body.reason);
   }
 }
