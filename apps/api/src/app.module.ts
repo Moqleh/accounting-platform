@@ -28,5 +28,15 @@ import { RolesGuard } from './roles.guard';
 import { PermissionGuard } from './permission.guard';
 import { TenantPrismaService } from './tenant-prisma.service';
 import { PrismaService } from './prisma.service';
-@Module({imports:[JwtModule.register({global:true,secret:process.env.JWT_SECRET||'dev-only-change-me',signOptions:{expiresIn:'8h'}})],controllers:[AppController,AuthController,AccountingController,ErpController,AgingController,SalesController,PurchasesController,PaymentsController,CreditNotesController,DebitNotesController,YearEndController,AdminController,BankingController],providers:[PrismaService,TenantPrismaService,AuthService,IdempotencyService,PostingConfigService,JwtAuthGuard,RolesGuard,PermissionGuard,AccountingService,SalesService,PurchasesService,PaymentsService,CreditNotesService,DebitNotesService,YearEndService]})
-export class AppModule{}
+
+const jwtSecret = process.env.JWT_SECRET;
+if (!jwtSecret || jwtSecret.length < 24) {
+  throw new Error('JWT_SECRET must be configured with at least 24 characters');
+}
+
+@Module({
+  imports: [JwtModule.register({ global: true, secret: jwtSecret, signOptions: { expiresIn: '8h' } })],
+  controllers: [AppController, AuthController, AccountingController, ErpController, AgingController, SalesController, PurchasesController, PaymentsController, CreditNotesController, DebitNotesController, YearEndController, AdminController, BankingController],
+  providers: [PrismaService, TenantPrismaService, AuthService, IdempotencyService, PostingConfigService, JwtAuthGuard, RolesGuard, PermissionGuard, AccountingService, SalesService, PurchasesService, PaymentsService, CreditNotesService, DebitNotesService, YearEndService],
+})
+export class AppModule {}
