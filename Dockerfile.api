@@ -1,0 +1,17 @@
+FROM node:22-alpine AS build
+WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+RUN pnpm install --no-frozen-lockfile
+COPY . .
+RUN pnpm --filter @accounting/api prisma:generate && pnpm --filter @accounting/api build
+
+FROM node:22-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+RUN corepack enable
+COPY --from=build /app /app
+EXPOSE 4000
+CMD ["pnpm","--filter","@accounting/api","start"]
