@@ -1,0 +1,4 @@
+import { ModulePage } from '@/components/module-page';
+const columns=[{ar:'الاسم',en:'Name',key:'name'},{ar:'البريد الإلكتروني',en:'Email',key:'email'},{ar:'الدور',en:'Role',key:'role'},{ar:'نطاق البيانات',en:'Data Scope',key:'scope'},{ar:'الحالة',en:'Status',key:'status'}];
+const rows=[{name:'محمد المدير',email:'m@company.com',role:'Admin',scope:'All company',status:'Active'},{name:'أحمد المحاسب',email:'a@company.com',role:'Accountant',scope:'Finance',status:'Active'},{name:'سارة المبيعات',email:'s@company.com',role:'Sales',scope:'Sales',status:'Active'},{name:'خالد',email:'k@company.com',role:'Employee',scope:'Read only',status:'Disabled'}];
+export default function Page(){return <ModulePage titleAr="المستخدمون والصلاحيات" titleEn="Users & Permissions" subtitleAr="إدارة المستخدمين والأدوار ونطاق الوصول" subtitleEn="Manage users, roles and access scope" columns={columns} rows={rows} actionAr="مستخدم جديد" actionEn="New User"/>}
