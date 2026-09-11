@@ -1,0 +1,2 @@
+import { ReportTable } from '@/components/report-table';
+export default function Page(){return <ReportTable titleAr="أعمار ذمم الموردين" titleEn="Supplier Aging" subtitleAr="فواتير الموردين غير المسددة حسب العمر" subtitleEn="Outstanding supplier bills grouped by age" path="/reports/supplier-aging" columns={[{key:'billNumber',ar:'الفاتورة',en:'Bill'},{key:'supplier',ar:'المورد',en:'Supplier'},{key:'days',ar:'الأيام',en:'Days'},{key:'outstanding',ar:'المتبقي',en:'Outstanding'},{key:'bucket',ar:'الفئة',en:'Bucket'}]}/>}
