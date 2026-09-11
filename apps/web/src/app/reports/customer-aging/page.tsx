@@ -1,0 +1,2 @@
+import { ReportTable } from '@/components/report-table';
+export default function Page(){return <ReportTable titleAr="أعمار ذمم العملاء" titleEn="Customer Aging" subtitleAr="الفواتير غير المسددة حسب عمر الدين" subtitleEn="Outstanding customer invoices grouped by age" path="/reports/customer-aging" columns={[{key:'invoiceNumber',ar:'الفاتورة',en:'Invoice'},{key:'customer',ar:'العميل',en:'Customer'},{key:'days',ar:'الأيام',en:'Days'},{key:'outstanding',ar:'المتبقي',en:'Outstanding'},{key:'bucket',ar:'الفئة',en:'Bucket'}]}/>}
