@@ -43,10 +43,16 @@ function headers(extra?:Record<string,string>){
   return {'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{ }),...extra};
 }
 
+function loginPath(){
+  if(typeof window==='undefined') return '/login/';
+  const prefix=window.location.pathname.startsWith('/accounting-platform')?'/accounting-platform':'';
+  return `${prefix}/login/`;
+}
+
 async function parseError(response:Response){const text=await response.text();try{const body=JSON.parse(text) as {message?:string|string[]};return Array.isArray(body.message)?body.message.join(', '):body.message??text}catch{return text}}
 async function request<T>(path:string,method:'GET'|'POST'|'PATCH',body?:unknown,extraHeaders?:Record<string,string>):Promise<T>{
   const response=await fetch(`${API_URL}${path}`,{method,cache:method==='GET'?'no-store':undefined,headers:headers(extraHeaders),...(body===undefined?{}:{body:JSON.stringify(body)})});
-  if(response.status===401&&typeof window!=='undefined'){clearSession();if(window.location.pathname!=='/login')window.location.assign('/login')}
+  if(response.status===401&&typeof window!=='undefined'){clearSession();const target=loginPath();if(window.location.pathname!==target&&window.location.pathname!==target.slice(0,-1))window.location.assign(target)}
   if(!response.ok) throw new Error(`API ${response.status}: ${await parseError(response)}`);
   return response.json() as Promise<T>;
 }
