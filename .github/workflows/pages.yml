@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -43,19 +43,23 @@ jobs:
       - name: Add nojekyll marker
         run: touch apps/web/out/.nojekyll
 
-      - name: Force Pages workflow publishing mode
+      - name: Inspect current Pages configuration
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-          if gh api "repos/${GITHUB_REPOSITORY}/pages" >/dev/null 2>&1; then
-            gh api --method PUT "repos/${GITHUB_REPOSITORY}/pages" -f build_type=workflow >/dev/null
-          else
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/pages" -f build_type=workflow >/dev/null
-          fi
+        run: gh api "repos/${GITHUB_REPOSITORY}/pages" || true
 
-      - name: Configure Pages
+      - name: Publish static site to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./apps/web/out
+          publish_branch: gh-pages
+          force_orphan: true
+          enable_jekyll: false
+
+      - name: Configure Pages artifact
         uses: actions/configure-pages@v5
+        continue-on-error: true
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -68,7 +72,8 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
+    continue-on-error: true
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy by workflow when repository is configured for Actions
         id: deployment
         uses: actions/deploy-pages@v4
