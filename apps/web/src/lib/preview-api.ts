@@ -54,6 +54,27 @@ function db():Db{
   const raw=localStorage.getItem(DB_KEY); if(!raw) return seed();
   try{return JSON.parse(raw) as Db}catch{throw new Error('Preview data is invalid; restore or reset it before continuing')}
 }
+// Adapt older local preview records to the admin API contract without rewriting storage.
+function adminUser(row:any){
+  const user=row.user??row;
+  return {id:row.id,role:row.role,dataScope:row.dataScope,isActive:row.isActive!==false,user:{id:user.id,email:user.email??'',fullName:user.fullName??''}};
+}
+function adminYear(year:any){
+  const first=Date.parse(year.startDate);
+  const last=Date.parse(year.endDate);
+  return {...year,periods:(Array.isArray(year.periods)?year.periods:[]).map((period:any,index:number)=>{
+    const number=period.number??index+1;
+    const start=new Date(first);
+    start.setUTCMonth(start.getUTCMonth()+number-1,1);
+    const end=new Date(start);end.setUTCMonth(end.getUTCMonth()+1,0);
+    const valid=Number.isFinite(first)&&Number.isFinite(last)&&Number.isFinite(start.getTime())&&start.getTime()<=last;
+    return {...period,number,startDate:period.startDate??(valid?new Date(Math.max(first,start.getTime())).toISOString():''),endDate:period.endDate??(valid?new Date(Math.min(last,end.getTime())).toISOString():'')};
+  })};
+}
+function adminConfig(x:Db){
+  const config=x.postingConfig as typeof x.postingConfig & {receivableAccountId?:string;payableAccountId?:string;retainedEarningsAccountId?:string};
+  return {...config,companyId:x.company.id,receivableAccountId:config.receivableAccountId??config.arAccountId,payableAccountId:config.payableAccountId??config.apAccountId,retainedEarningsAccountId:config.retainedEarningsAccountId??x.accounts.find(a=>a.type==='Equity')?.id??null};
+}
 function save(x:Db){localStorage.setItem(DB_KEY,JSON.stringify(x))}
 function audit(x:Db,action:string,entityType:string,entityId:string){x.audit.unshift({id:id('audit'),action,entityType,entityId,createdAt:now(),user:{email:ADMIN_EMAIL,fullName:'Super Admin'}} as never)}
 function nextNo(prefix:string,count:number){return `${prefix}-${String(count+1).padStart(5,'0')}`}
@@ -213,8 +234,10 @@ export async function previewRequest<T>(path:string,method:'GET'|'POST'|'PATCH',
     if(clean.startsWith('/erp/suppliers/')) return x.suppliers as T;
     if(clean.startsWith('/erp/items/')) return x.items as T;
     if(clean.startsWith('/erp/warehouses/')||clean.startsWith('/admin/warehouses/')) return x.warehouses as T;
-    if(clean.startsWith('/erp/tax-rates/')||clean.startsWith('/admin/tax-rates/')) return x.taxes as T;
-    if(clean.startsWith('/erp/accounts/')||clean.startsWith('/admin/accounts/')) return x.accounts as T;
+    if(clean.startsWith('/admin/tax-rates/')) return x.taxes.map((t:any)=>({...t,rate:!t.effectiveFrom&&Number(t.rate)>1?String(Number(t.rate)/100):t.rate,effectiveFrom:t.effectiveFrom??''})) as T;
+    if(clean.startsWith('/erp/tax-rates/')) return x.taxes as T;
+    if(clean.startsWith('/admin/accounts/')) return x.accounts.map((a:any)=>({...a,isLeaf:a.isLeaf??a.isPosting??false})) as T;
+    if(clean.startsWith('/erp/accounts/')) return x.accounts as T;
     if(clean.startsWith('/erp/sales/')) return x.sales as T;
     if(clean.startsWith('/erp/purchases/')) return x.purchases as T;
     if(clean.startsWith('/erp/journals/')) return x.journals as T;
@@ -226,11 +249,11 @@ export async function previewRequest<T>(path:string,method:'GET'|'POST'|'PATCH',
     if(clean.startsWith('/reports/customer-aging/')) return x.customers.map(c=>({customerId:c.id,customerName:c.name,current:'0',days30:'0',days60:'0',days90:'0',older:'0',total:'0'})) as T;
     if(clean.startsWith('/reports/supplier-aging/')) return x.suppliers.map(c=>({supplierId:c.id,supplierName:c.name,current:'0',days30:'0',days60:'0',days90:'0',older:'0',total:'0'})) as T;
     if(clean.startsWith('/reports/credit-notes/')) return x.creditNotes as T;
-    if(clean.startsWith('/admin/fiscal-years/')) return x.fiscalYears as T;
-    if(clean.startsWith('/admin/users/')) return x.users as T;
+    if(clean.startsWith('/admin/fiscal-years/')) return x.fiscalYears.map(adminYear) as T;
+    if(clean.startsWith('/admin/users/')) return x.users.map(adminUser) as T;
     if(clean.startsWith('/admin/audit/')) return x.audit as T;
-    if(clean.startsWith('/admin/posting-config/')) return x.postingConfig as T;
-    if(clean.startsWith('/admin/exchange-rates/')) return x.exchangeRates as T;
+    if(clean.startsWith('/admin/posting-config/')) return adminConfig(x) as T;
+    if(clean.startsWith('/admin/exchange-rates/')) return x.exchangeRates.map((r:any)=>({...r,rateDate:r.rateDate??r.effectiveDate??''})) as T;
     if(clean.startsWith('/erp/exchange-rate/')){const code=clean.split('/').pop();return (x.exchangeRates.find(r=>r.currencyCode===code)||{currencyCode:code,rate:'1'}) as T}
     if(clean.startsWith('/debit-notes/')) return x.debitNotes as T;
     if(clean.startsWith('/banking/accounts/')) return x.bankAccounts as T;
