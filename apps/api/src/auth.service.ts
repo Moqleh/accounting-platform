@@ -10,16 +10,26 @@ export class AuthService {
   private async buildSession(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { memberships: { include: { company: true } } },
+      select: { id: true, email: true, fullName: true },
     });
     if (!user) throw new UnauthorizedException('User not found');
-    const memberships = user.memberships.map((m) => ({
+
+    // Load memberships explicitly instead of relying on a nested relation load.
+    // This keeps session construction predictable when tenant RLS is enabled.
+    const rows = await this.prisma.companyMembership.findMany({
+      where: { userId },
+      include: { company: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const memberships = rows.map((m) => ({
       companyId: m.companyId,
       companyName: m.company.name,
       role: m.role,
       dataScope: m.dataScope,
     }));
-    const defaultCompanyId = memberships[0]?.companyId;
+    if (!memberships.length) throw new UnauthorizedException('User has no active company membership');
+
+    const defaultCompanyId = memberships[0].companyId;
     return {
       user: { id: user.id, email: user.email, fullName: user.fullName },
       email: user.email,
@@ -44,13 +54,13 @@ export class AuthService {
     return this.buildSession(userId);
   }
 
-  async changePassword(userId:string,currentPassword:string,newPassword:string){
-    if(!newPassword||newPassword.length<10) throw new BadRequestException('New password must contain at least 10 characters');
-    const user=await this.prisma.user.findUnique({where:{id:userId}});
-    if(!user?.passwordHash||!(await bcrypt.compare(currentPassword,user.passwordHash))) throw new UnauthorizedException('Current password is incorrect');
-    if(await bcrypt.compare(newPassword,user.passwordHash)) throw new BadRequestException('New password must be different');
-    const passwordHash=await bcrypt.hash(newPassword,12);
-    await this.prisma.user.update({where:{id:userId},data:{passwordHash}});
-    return {changed:true};
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    if (!newPassword || newPassword.length < 10) throw new BadRequestException('New password must contain at least 10 characters');
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.passwordHash || !(await bcrypt.compare(currentPassword, user.passwordHash))) throw new UnauthorizedException('Current password is incorrect');
+    if (await bcrypt.compare(newPassword, user.passwordHash)) throw new BadRequestException('New password must be different');
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    return { changed: true };
   }
 }
