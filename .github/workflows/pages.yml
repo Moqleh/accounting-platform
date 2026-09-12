@@ -3,17 +3,15 @@ name: Deploy GitHub Pages
 on:
   push:
     branches: [main]
-    paths:
-      - 'apps/web/**'
-      - 'pnpm-workspace.yaml'
-      - 'package.json'
-      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
   pages: write
   id-token: write
+
+env:
+  NEXT_PUBLIC_API_URL: ''
 
 concurrency:
   group: pages
@@ -40,19 +38,20 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Build static web app
-        env:
-          NEXT_PUBLIC_API_URL: ''
         run: pnpm --filter @accounting/web build
 
       - name: Add nojekyll marker
         run: touch apps/web/out/.nojekyll
 
-      - name: Ensure Pages is enabled for workflow deployments
+      - name: Force Pages workflow publishing mode
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh api "repos/${GITHUB_REPOSITORY}/pages" >/dev/null 2>&1; then
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/pages" -f build_type=workflow
+          set -e
+          if gh api "repos/${GITHUB_REPOSITORY}/pages" >/dev/null 2>&1; then
+            gh api --method PUT "repos/${GITHUB_REPOSITORY}/pages" -f build_type=workflow >/dev/null
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/pages" -f build_type=workflow >/dev/null
           fi
 
       - name: Configure Pages
