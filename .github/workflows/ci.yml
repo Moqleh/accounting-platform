@@ -27,6 +27,8 @@ jobs:
       DATABASE_URL: postgresql://accounting:accounting@localhost:5432/accounting?schema=public
       JWT_SECRET: ci-only-not-for-production
       CORS_ORIGINS: http://localhost:3000
+      SEED_ADMIN_PASSWORD: CI-Temporary-Admin-2026!
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -56,3 +58,31 @@ jobs:
       - run: pnpm -r typecheck
       - run: pnpm -r test
       - run: pnpm -r build
+      - name: Runtime API authentication smoke test
+        shell: bash
+        run: |
+          pnpm --filter @accounting/api start > /tmp/accounting-api.log 2>&1 &
+          API_PID=$!
+          trap 'kill $API_PID 2>/dev/null || true; cat /tmp/accounting-api.log' EXIT
+          for i in {1..30}; do
+            if curl -fsS http://localhost:4000/api/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://localhost:4000/api/health >/dev/null
+          LOGIN=$(curl -fsS -H 'Content-Type: application/json' -d '{"email":"admin@example.com","password":"CI-Temporary-Admin-2026!"}' http://localhost:4000/api/auth/login)
+          TOKEN=$(node -e "const d=JSON.parse(process.argv[1]); if(!d.accessToken) process.exit(1); process.stdout.write(d.accessToken)" "$LOGIN")
+          curl -fsS -H "Authorization: Bearer $TOKEN" http://localhost:4000/api/auth/me | grep -q 'admin@example.com'
+      - name: Runtime web route smoke test
+        shell: bash
+        run: |
+          pnpm --filter @accounting/web start -- -p 3000 > /tmp/accounting-web.log 2>&1 &
+          WEB_PID=$!
+          trap 'kill $WEB_PID 2>/dev/null || true; cat /tmp/accounting-web.log' EXIT
+          for i in {1..30}; do
+            if curl -fsS http://localhost:3000/login >/dev/null; then break; fi
+            sleep 1
+          done
+          routes=(/login / /sales /sales/new /sales/credit-notes /purchases /purchases/new /purchases/debit-notes /customers /suppliers /inventory /payments /banking /expenses /journals /journals/new /reports /reports/trial-balance /reports/profit-loss /reports/balance-sheet /reports/customer-aging /reports/supplier-aging /reports/inventory-valuation /reports/account-activity /setup /users /audit /year-end /settings)
+          for route in "${routes[@]}"; do
+            curl -fsS "http://localhost:3000$route" >/dev/null || { echo "Route failed: $route"; exit 1; }
+          done
