@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, BarChart3, Calculator, FileText, Languages, LockKeyhole, Mail, Phone, Wallet } from 'lucide-react';
 import { login } from '@/lib/api';
 import styles from './login.module.css';
+import { PlatformLinks } from '@/components/platform-links';
 
 export default function Login() {
   const [ar,setAr]=useState(true), [email,setEmail]=useState(''), [password,setPassword]=useState(''), [busy,setBusy]=useState(false), [error,setError]=useState('');
@@ -39,6 +40,7 @@ export default function Login() {
         <p className={styles.help}>{ar?'تحتاج مساعدة؟ بيانات التواصل متاحة أدناه.':'Need a hand? Contact details are below.'}</p>
       </section>
     </div>
+    <PlatformLinks ar={ar}/>
     <footer className={styles.footer}>
       <p>{ar?'تصميم':'Designed by'} <strong>{ar?'محمد العقلة':'Mohammed Al-Oqleh'}</strong></p>
       <nav className={styles.contacts} aria-label={ar?'بيانات التواصل':'Contact details'}>
