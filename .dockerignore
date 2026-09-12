@@ -1,0 +1,16 @@
+.git
+**/node_modules
+**/.next
+**/out
+**/dist
+**/.test-build
+**/*.tsbuildinfo
+**/coverage
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+upload
+draft-review
+qa-runtime

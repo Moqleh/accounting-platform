@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NEXT_PUBLIC_API_URL: ''
+  NEXT_PUBLIC_API_URL: ${{ vars.ACCOUNTING_BACKEND_ENABLED == 'true' && vars.ACCOUNTING_API_URL || '' }}
 
 jobs:
   deploy:
@@ -31,6 +31,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Validate backend URL when enabled
+        env:
+          BACKEND_ENABLED: ${{ vars.ACCOUNTING_BACKEND_ENABLED }}
+        run: |
+          node <<'NODE'
+          if (process.env.BACKEND_ENABLED === 'true') {
+            const url = new URL(process.env.NEXT_PUBLIC_API_URL);
+            if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || !/\/api\/?$/.test(url.pathname)) {
+              throw new Error('ACCOUNTING_API_URL must be a public HTTPS API URL ending in /api without credentials, query or fragment');
+            }
+          }
+          NODE
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
