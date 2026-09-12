@@ -33,9 +33,6 @@ class BasePostingDocumentDto {
   @IsUUID()
   warehouseId!: string;
 
-  @IsISO8601({ strict: true })
-  documentDate!: string;
-
   @IsString()
   @Length(3, 3)
   @Matches(/^[A-Z]{3}$/, { message: 'currencyCode must be a 3-letter uppercase ISO-style code' })
@@ -49,6 +46,9 @@ export class CreateSalesInvoiceDto extends BasePostingDocumentDto {
   @IsUUID()
   customerId!: string;
 
+  @IsISO8601({ strict: true })
+  invoiceDate!: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
@@ -59,6 +59,9 @@ export class CreateSalesInvoiceDto extends BasePostingDocumentDto {
 export class CreatePurchaseBillDto extends BasePostingDocumentDto {
   @IsUUID()
   supplierId!: string;
+
+  @IsISO8601({ strict: true })
+  billDate!: string;
 
   @IsArray()
   @ArrayMinSize(1)
