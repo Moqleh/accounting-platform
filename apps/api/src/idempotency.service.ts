@@ -1,6 +1,6 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 type Claim = { id:string; replay?:unknown };
 
@@ -14,17 +14,26 @@ export class IdempotencyService {
     if(!key) return null;
     if(key.length>200) throw new ConflictException('Idempotency key is too long');
     const payloadHash=this.payloadHash(payload);
-    try{
-      const created=await tx.idempotencyRecord.create({data:{companyId,endpoint,key,payloadHash,status:'Processing',lockedAt:new Date()}});
-      return {id:created.id};
-    }catch(error){
-      if(!(error instanceof Prisma.PrismaClientKnownRequestError)||error.code!=='P2002') throw error;
-      const existing=await tx.idempotencyRecord.findUnique({where:{companyId_endpoint_key:{companyId,endpoint,key}}});
-      if(!existing) throw error;
-      if(existing.payloadHash!==payloadHash) throw new ConflictException('Idempotency key was already used with a different payload');
-      if(existing.status==='Completed') return {id:existing.id,replay:existing.response};
-      throw new ConflictException('A request with this idempotency key is already processing');
-    }
+    const candidateId=randomUUID();
+
+    // PostgreSQL aborts the whole transaction after a unique-constraint error.
+    // ON CONFLICT DO NOTHING preserves the transaction so an existing request can
+    // be inspected and safely replayed without turning a legitimate retry into 500.
+    const inserted=await tx.$queryRaw<Array<{id:string}>>(Prisma.sql`
+      INSERT INTO "IdempotencyRecord"
+        ("id","companyId","endpoint","key","payloadHash","status","lockedAt","createdAt","updatedAt")
+      VALUES
+        (${candidateId}::uuid,${companyId}::uuid,${endpoint},${key},${payloadHash},'Processing'::"IdempotencyStatus",NOW(),NOW(),NOW())
+      ON CONFLICT ("companyId","endpoint","key") DO NOTHING
+      RETURNING "id"
+    `);
+    if(inserted.length) return {id:inserted[0].id};
+
+    const existing=await tx.idempotencyRecord.findUnique({where:{companyId_endpoint_key:{companyId,endpoint,key}}});
+    if(!existing) throw new ConflictException('Unable to reserve idempotency key');
+    if(existing.payloadHash!==payloadHash) throw new ConflictException('Idempotency key was already used with a different payload');
+    if(existing.status==='Completed') return {id:existing.id,replay:existing.response};
+    throw new ConflictException('A request with this idempotency key is already processing');
   }
 
   async complete(tx:Prisma.TransactionClient,claim:Claim|null,statusCode:number,response:unknown){
