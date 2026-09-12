@@ -54,8 +54,10 @@ const purchaseBody = {
 const purchaseKey = `acceptance-purchase-${stamp}`;
 const purchase1 = await request('/purchases/bill', { method: 'POST', token, body: purchaseBody, key: purchaseKey });
 const purchase2 = await request('/purchases/bill', { method: 'POST', token, body: purchaseBody, key: purchaseKey });
-assert.ok(purchase1?.id, 'Purchase bill was not created');
-assert.equal(purchase2.id, purchase1.id, 'Purchase idempotency replay created a different document');
+const purchase1Id = purchase1?.bill?.id ?? purchase1?.id;
+const purchase2Id = purchase2?.bill?.id ?? purchase2?.id;
+assert.ok(purchase1Id, 'Purchase bill was not created');
+assert.equal(purchase2Id, purchase1Id, 'Purchase idempotency replay created a different document');
 
 const salesBody = {
   companyId,
@@ -69,8 +71,10 @@ const salesBody = {
 const salesKey = `acceptance-sale-${stamp}`;
 const sale1 = await request('/sales/invoice', { method: 'POST', token, body: salesBody, key: salesKey });
 const sale2 = await request('/sales/invoice', { method: 'POST', token, body: salesBody, key: salesKey });
-assert.ok(sale1?.id, 'Sales invoice was not created');
-assert.equal(sale2.id, sale1.id, 'Sales idempotency replay created a different document');
+const sale1Id = sale1?.invoice?.id ?? sale1?.id;
+const sale2Id = sale2?.invoice?.id ?? sale2?.id;
+assert.ok(sale1Id, 'Sales invoice was not created');
+assert.equal(sale2Id, sale1Id, 'Sales idempotency replay created a different document');
 
 const journals = await request(`/erp/journals/${companyId}?take=500`, { token });
 assert.ok(journals.length >= 2, 'Expected posted journals after purchase and sale');
@@ -97,4 +101,4 @@ assert.ok(Number.isFinite(Number(profitLoss.netProfit)), 'Profit and loss did no
 const balanceSheet = await request(`/erp/balance-sheet/${companyId}?asOf=2026-12-31`, { token });
 assert.ok(Array.isArray(balanceSheet) && balanceSheet.length > 0, 'Balance sheet returned no balances');
 
-console.log(JSON.stringify({ companyId, purchaseBillId: purchase1.id, salesInvoiceId: sale1.id, journals: journals.length, trialDebit, trialCredit }));
+console.log(JSON.stringify({ companyId, purchaseBillId: purchase1Id, salesInvoiceId: sale1Id, journals: journals.length, trialDebit, trialCredit }));
