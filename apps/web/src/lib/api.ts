@@ -1,3 +1,5 @@
+import { isPreviewMode, previewLogin, previewRequest } from './preview-api';
+
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
 export type Session={token:string;user:{id:string;email:string;fullName:string};memberships:Array<{companyId:string;companyName:string;role:string;dataScope?:string|null}>;defaultCompanyId?:string};
@@ -51,6 +53,7 @@ function loginPath(){
 
 async function parseError(response:Response){const text=await response.text();try{const body=JSON.parse(text) as {message?:string|string[]};return Array.isArray(body.message)?body.message.join(', '):body.message??text}catch{return text}}
 async function request<T>(path:string,method:'GET'|'POST'|'PATCH',body?:unknown,extraHeaders?:Record<string,string>):Promise<T>{
+  if(isPreviewMode()) return previewRequest<T>(path,method,body);
   const response=await fetch(`${API_URL}${path}`,{method,cache:method==='GET'?'no-store':undefined,headers:headers(extraHeaders),...(body===undefined?{}:{body:JSON.stringify(body)})});
   if(response.status===401&&typeof window!=='undefined'){clearSession();const target=loginPath();if(window.location.pathname!==target&&window.location.pathname!==target.slice(0,-1))window.location.assign(target)}
   if(!response.ok) throw new Error(`API ${response.status}: ${await parseError(response)}`);
@@ -64,6 +67,11 @@ export function apiPatch<T>(path:string,body:unknown,extraHeaders?:Record<string
 export function idempotencyHeaders(){return {'Idempotency-Key':crypto.randomUUID()}}
 
 export async function login(email:string,password:string){
+  if(isPreviewMode()){
+    const session=await previewLogin(email,password) as Session;
+    saveSession(session);
+    return session;
+  }
   const response=await fetch(`${API_URL}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
   if(!response.ok) throw new Error(response.status===401?'Invalid email or password':`Login failed (${response.status})`);
   const session=await response.json() as Session;
