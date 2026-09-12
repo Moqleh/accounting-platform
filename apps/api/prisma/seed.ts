@@ -2,11 +2,12 @@ import { AccountType, ItemType, PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
+const DEMO_COMPANY_ID='11111111-1111-4111-8111-111111111111';
 
 async function main(){
   await prisma.currency.upsert({where:{code:'SAR'},update:{},create:{code:'SAR',name:'Saudi Riyal',symbol:'ر.س',decimalPlaces:2}});
   await prisma.currency.upsert({where:{code:'USD'},update:{},create:{code:'USD',name:'US Dollar',symbol:'$',decimalPlaces:2}});
-  const company=await prisma.company.upsert({where:{id:'11111111-1111-1111-1111-111111111111'},update:{name:'Example Trading Company'},create:{id:'11111111-1111-1111-1111-111111111111',name:'Example Trading Company',taxNumber:'310000000000003',baseCurrencyCode:'SAR'}});
+  const company=await prisma.company.upsert({where:{id:DEMO_COMPANY_ID},update:{name:'Example Trading Company'},create:{id:DEMO_COMPANY_ID,name:'Example Trading Company',taxNumber:'310000000000003',baseCurrencyCode:'SAR'}});
   const seedPassword=process.env.SEED_ADMIN_PASSWORD;
   const passwordHash=seedPassword?await bcrypt.hash(seedPassword,12):undefined;
   const user=await prisma.user.upsert({where:{email:'admin@example.com'},update:{fullName:'Mohammed Admin',...(passwordHash?{passwordHash}:{})},create:{email:'admin@example.com',fullName:'Mohammed Admin',passwordHash}});
