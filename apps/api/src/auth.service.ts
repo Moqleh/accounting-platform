@@ -7,14 +7,12 @@ import { PrismaService } from './prisma.service';
 export class AuthService {
   constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService) {}
 
-  async login(email: string, password: string) {
+  private async buildSession(userId: string) {
     const user = await this.prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
+      where: { id: userId },
       include: { memberships: { include: { company: true } } },
     });
-    if (!user?.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
+    if (!user) throw new UnauthorizedException('User not found');
     const memberships = user.memberships.map((m) => ({
       companyId: m.companyId,
       companyName: m.company.name,
@@ -22,8 +20,28 @@ export class AuthService {
       dataScope: m.dataScope,
     }));
     const defaultCompanyId = memberships[0]?.companyId;
-    const token = await this.jwt.signAsync({ sub: user.id, email: user.email, companyId: defaultCompanyId });
-    return { token, user: { id: user.id, email: user.email, fullName: user.fullName }, memberships, defaultCompanyId };
+    return {
+      user: { id: user.id, email: user.email, fullName: user.fullName },
+      email: user.email,
+      memberships,
+      defaultCompanyId,
+    };
+  }
+
+  async login(email: string, password: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+    });
+    if (!user?.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+    const session = await this.buildSession(user.id);
+    const token = await this.jwt.signAsync({ sub: user.id, email: user.email, companyId: session.defaultCompanyId });
+    return { token, ...session };
+  }
+
+  async me(userId: string) {
+    return this.buildSession(userId);
   }
 
   async changePassword(userId:string,currentPassword:string,newPassword:string){
