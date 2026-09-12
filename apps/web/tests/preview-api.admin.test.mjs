@@ -52,5 +52,5 @@ test('users and setup remain renderable after creating records',async()=>{
  await previewRequest('/admin/exchange-rates/company','POST',{currencyCode:'EUR',rateDate:'2026-09-01',rate:'4'});
  assert.equal((await get('exchange-rates'))[0].rateDate.slice(0,10),'2026-09-01');
  await previewRequest('/admin/fiscal-years/company','POST',{name:'2027',startDate:'2027-01-01',endDate:'2027-12-31'});
- assert.deepEqual((await get('fiscal-years'))[0].periods,[]);
+ assert.equal((await get('fiscal-years'))[0].periods.length,12);
 });
