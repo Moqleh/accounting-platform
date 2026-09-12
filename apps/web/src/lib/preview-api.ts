@@ -51,15 +51,144 @@ function seed(){
 
 function db():Db{
   if(typeof window==='undefined') return seed();
-  const raw=localStorage.getItem(DB_KEY); if(!raw){const s=seed();localStorage.setItem(DB_KEY,JSON.stringify(s));return s}
-  try{return JSON.parse(raw) as Db}catch{const s=seed();localStorage.setItem(DB_KEY,JSON.stringify(s));return s}
+  const raw=localStorage.getItem(DB_KEY); if(!raw) return seed();
+  try{return JSON.parse(raw) as Db}catch{throw new Error('Preview data is invalid; restore or reset it before continuing')}
 }
 function save(x:Db){localStorage.setItem(DB_KEY,JSON.stringify(x))}
 function audit(x:Db,action:string,entityType:string,entityId:string){x.audit.unshift({id:id('audit'),action,entityType,entityId,createdAt:now(),user:{email:ADMIN_EMAIL,fullName:'Super Admin'}} as never)}
 function nextNo(prefix:string,count:number){return `${prefix}-${String(count+1).padStart(5,'0')}`}
-function journal(x:Db,sourceType:string,sourceId:string,lines:Array<{accountId:string;debit?:number;credit?:number}>){
-  const j={id:id('jrnl'),journalNumber:nextNo('JRN',x.journals.length),transactionDate:now(),status:'Posted',sourceType,sourceId,description:sourceType,lines:lines.map(l=>({id:id('jl'),accountId:l.accountId,baseDebit:String(l.debit??0),baseCredit:String(l.credit??0),debit:String(l.debit??0),credit:String(l.credit??0),account:x.accounts.find(a=>a.id===l.accountId)}))};
-  x.journals.unshift(j as never);return j;
+// ============================================================
+// Journal balance validation (centralised, pure)
+// ============================================================
+// - Never mutates its arguments.
+// - Reads accounts only; never writes state or storage.
+// - Called by previewRequest paths BEFORE any Db mutation.
+// - Called again inside journal() on every invocation.
+// ============================================================
+
+export type JournalLineInput = {
+  accountId: string;
+  debit?: number | string;
+  credit?: number | string;
+  baseDebit?: number | string;
+  baseCredit?: number | string;
+};
+
+export type NormalisedJournalLine = {
+  accountId: string;
+  debit: number;
+  credit: number;
+};
+
+const BALANCE_EPSILON = 1e-6;
+
+// Only omitted journal sides default to zero. Required values remain strict.
+function toDecimalStrict(value: unknown, tag: string): number {
+  if (typeof value !== 'number' && typeof value !== 'string') {
+    throw new Error(`${tag}: invalid numeric value`);
+  }
+  if (typeof value === 'string' && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim())) {
+    throw new Error(`${tag}: invalid numeric value`);
+  }
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) throw new Error(`${tag}: invalid numeric value`);
+  return amount;
+}
+
+export function validateJournalLines(
+  x: Db,
+  lines: JournalLineInput[],
+): NormalisedJournalLine[] {
+  if (!Array.isArray(lines) || lines.length < 2) {
+    throw new Error('Journal requires at least two lines');
+  }
+
+  const accountIndex = new Map(
+    (x.accounts as Array<{ id: string; isActive?: boolean }>).map(
+      (a) => [a.id, a] as const,
+    ),
+  );
+
+  const normalised: NormalisedJournalLine[] = Array.from(lines).map((line, index) => {
+    const tag = `Line ${index + 1}`;
+
+    if (!line || typeof line !== 'object' || Array.isArray(line)) {
+      throw new Error(`${tag}: invalid line payload`);
+    }
+    if (typeof line.accountId !== 'string' || line.accountId.length === 0) {
+      throw new Error(`${tag}: accountId is required`);
+    }
+
+    const account = accountIndex.get(line.accountId);
+    if (!account) {
+      throw new Error(`${tag}: unknown account`);
+    }
+    if (account.isActive === false) {
+      throw new Error(`${tag}: account is inactive`);
+    }
+
+    const debit = toDecimalStrict(line.debit ?? line.baseDebit ?? 0, tag);
+    const credit = toDecimalStrict(line.credit ?? line.baseCredit ?? 0, tag);
+
+    if (debit < 0 || credit < 0) {
+      throw new Error(`${tag}: negative amounts are not allowed`);
+    }
+    if (debit > 0 && credit > 0) {
+      throw new Error(`${tag}: debit and credit cannot both be set`);
+    }
+    if (debit === 0 && credit === 0) {
+      throw new Error(`${tag}: debit or credit is required`);
+    }
+
+    return { accountId: line.accountId, debit, credit };
+  });
+
+  const totalDebit = normalised.reduce((s, l) => s + l.debit, 0);
+  const totalCredit = normalised.reduce((s, l) => s + l.credit, 0);
+
+  if (!Number.isFinite(totalDebit) || !Number.isFinite(totalCredit)) {
+    throw new Error('Journal totals are not finite');
+  }
+
+  const diff = Math.abs(totalDebit - totalCredit);
+  if (!(diff < BALANCE_EPSILON)) {
+    throw new Error(
+      `Journal is not balanced: debit ${totalDebit} ≠ credit ${totalCredit}`,
+    );
+  }
+
+  return normalised;
+}
+function journal(
+  x: Db,
+  sourceType: string,
+  sourceId: string,
+  lines: JournalLineInput[],
+) {
+  // Validate every preview journal, including production builds of the preview.
+  const normalised = validateJournalLines(x, lines);
+
+  const j = {
+    id: id('jrnl'),
+    journalNumber: nextNo('JRN', x.journals.length),
+    transactionDate: now(),
+    status: 'Posted',
+    sourceType,
+    sourceId,
+    description: sourceType,
+    lines: normalised.map((l) => ({
+      id: id('jl'),
+      accountId: l.accountId,
+      baseDebit: String(l.debit),
+      baseCredit: String(l.credit),
+      debit: String(l.debit),
+      credit: String(l.credit),
+      account: x.accounts.find((a) => a.id === l.accountId),
+    })),
+  };
+
+  x.journals.unshift(j as never);
+  return j;
 }
 function trialBalance(x:Db){return x.accounts.map(a=>{let d=0,c=0;for(const j of x.journals as any[])for(const l of j.lines??[])if(l.accountId===a.id){d+=n(l.baseDebit);c+=n(l.baseCredit)}return {accountCode:a.code,accountName:a.name,accountNameAr:a.nameAr,debit:String(d),credit:String(c),balance:String(d-c)}}).filter(r=>n(r.debit)||n(r.credit))}
 function valuation(x:Db){return x.items.filter(i=>i.type==='Inventory').map(i=>{const quantity=(i.lots??[]).reduce((s,l)=>s+n(l.remainingQuantity),0);const value=(i.lots??[]).reduce((s,l)=>s+n(l.remainingQuantity)*n(l.unitCost),0);return {itemCode:i.code,itemName:i.name,quantity:String(quantity),value:String(value),averageCost:String(quantity?value/quantity:0)}})}
@@ -73,7 +202,9 @@ export async function previewLogin(email:string,password:string){
 }
 
 export async function previewRequest<T>(path:string,method:'GET'|'POST'|'PATCH',body?:any):Promise<T>{
-  const x=db(); const clean=path.split('?')[0];
+  const clean=path.split('?')[0];
+  if (method !== 'GET' && clean === '/year-end/close') throw new Error('Year-end closing is not available in preview mode');
+  const x=db();
   if(method==='GET'){
     if(clean==='/auth/me') return {user:{id:'user-admin',email:ADMIN_EMAIL,fullName:'Super Admin'},email:ADMIN_EMAIL,memberships:[{companyId:COMPANY_ID,companyName:x.company.name,role:'Owner',dataScope:'all'}],defaultCompanyId:COMPANY_ID} as T;
     if(clean.startsWith('/erp/company/')||clean.startsWith('/admin/company/')) return x.company as T;
@@ -128,17 +259,266 @@ export async function previewRequest<T>(path:string,method:'GET'|'POST'|'PATCH',
   if(clean.startsWith('/admin/users/')){const v={id:id('user'),isActive:true,...body};x.users.unshift(v as never);audit(x,'CREATE','User',v.id);save(x);return v as T}
   if(clean.includes('/fiscal-periods/')&&method==='PATCH'){for(const fy of x.fiscalYears){const p=(fy.periods as any[]).find(q=>clean.includes(q.id));if(p)p.status=body.status}save(x);return {updated:true} as T}
 
-  if(clean==='/purchases/bill'){
-    const subtotal=(body.lines??[]).reduce((s:number,l:any)=>s+n(l.quantity)*n(l.unitCost),0);const tax=subtotal*.15,total=subtotal+tax;const v={id:id('bill'),billNumber:nextNo('PUR',x.purchases.length),transactionDate:body.billDate,total:String(total),status:'Posted',currencyCode:body.currencyCode,supplier:x.suppliers.find(s=>s.id===body.supplierId),lines:(body.lines??[]).map((l:any)=>({...l,id:id('pl'),item:x.items.find(i=>i.id===l.itemId)}))};x.purchases.unshift(v as never);for(const l of body.lines??[]){const item=x.items.find(i=>i.id===l.itemId);if(item?.type==='Inventory')item.lots.push({id:id('lot'),warehouseId:body.warehouseId,remainingQuantity:String(l.quantity),unitCost:String(l.unitCost),receivedAt:body.billDate} as never)}journal(x,'PurchaseBill',v.id,[{accountId:x.postingConfig.inventoryAccountId,debit:subtotal},{accountId:x.postingConfig.inputTaxAccountId,debit:tax},{accountId:x.postingConfig.apAccountId,credit:total}]);audit(x,'POST','PurchaseBill',v.id);save(x);return v as T;
+if (clean === '/purchases/bill') {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Invalid document payload');
+  if (!x.suppliers.some(p => p.id === body.supplierId)) throw new Error('Invalid supplier');
+  if (!x.warehouses.some(w => w.id === body.warehouseId && w.isActive !== false)) throw new Error('Invalid or inactive warehouse');
+
+  // ---- 1) Validate input shape ----
+  const rawLines = body?.lines;
+  if (!Array.isArray(rawLines) || rawLines.length === 0) {
+    throw new Error('Purchase bill requires at least one line');
   }
-  if(clean==='/sales/invoice'){
-    const subtotal=(body.lines??[]).reduce((s:number,l:any)=>s+n(l.quantity)*n(l.unitPrice),0);const tax=subtotal*.15,total=subtotal+tax;let cost=0;for(const l of body.lines??[]){const item=x.items.find(i=>i.id===l.itemId);let qty=n(l.quantity);for(const lot of item?.lots??[]){const take=Math.min(qty,n(lot.remainingQuantity));cost+=take*n(lot.unitCost);lot.remainingQuantity=String(n(lot.remainingQuantity)-take);qty-=take;if(qty<=0)break}}const v={id:id('inv'),invoiceNumber:nextNo('INV',x.sales.length),transactionDate:body.invoiceDate,total:String(total),status:'Posted',currencyCode:body.currencyCode,customer:x.customers.find(c=>c.id===body.customerId),lines:(body.lines??[]).map((l:any)=>({...l,id:id('sl'),item:x.items.find(i=>i.id===l.itemId)}))};x.sales.unshift(v as never);journal(x,'SalesInvoice',v.id,[{accountId:x.postingConfig.arAccountId,debit:total},{accountId:x.postingConfig.salesAccountId,credit:subtotal},{accountId:x.postingConfig.outputTaxAccountId,credit:tax},...(cost?[{accountId:x.postingConfig.cogsAccountId,debit:cost},{accountId:x.postingConfig.inventoryAccountId,credit:cost}]:[])]);audit(x,'POST','SalesInvoice',v.id);save(x);return v as T;
+
+  const seenItems = new Set<string>();
+  for (let i = 0; i < rawLines.length; i++) {
+    const l = rawLines[i];
+    const tag = `Line ${i + 1}`;
+    if (!l || typeof l !== 'object' || Array.isArray(l)) {
+      throw new Error(`${tag}: invalid line payload`);
+    }
+    if (typeof l.itemId !== 'string' || !l.itemId) {
+      throw new Error(`${tag}: itemId is required`);
+    }
+    if (seenItems.has(l.itemId)) {
+      throw new Error(`${tag}: duplicate item in bill is not allowed`);
+    }
+    seenItems.add(l.itemId);
+
+    const qty = toDecimalStrict(l.quantity, `${tag}: quantity`);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      throw new Error(`${tag}: quantity must be a positive number`);
+    }
+    const unitCost = toDecimalStrict(l.unitCost, `${tag}: unitCost`);
+    if (!Number.isFinite(unitCost) || unitCost < 0) {
+      throw new Error(`${tag}: unitCost must be a non-negative number`);
+    }
+    const item = x.items.find((it) => it.id === l.itemId);
+    if (!item || (item as { isActive?: boolean }).isActive === false) {
+      throw new Error(`${tag}: unknown or inactive item`);
+    }
+    if (!['Inventory', 'Service'].includes(item.type)) throw new Error(`${tag}: unsupported item type`);
   }
-  if(clean==='/accounting/journals/manual'){const lines=(body.lines??[]).map((l:any)=>({accountId:l.accountId,debit:n(l.debit??l.baseDebit),credit:n(l.credit??l.baseCredit)}));const v=journal(x,'Manual',id('manual'),lines);audit(x,'POST','Journal',(v as any).id);save(x);return v as T}
-  if(clean==='/payments/customer-receipt'||clean==='/payments/supplier-payment'){const amount=n(body.amount);const receipt=clean.includes('customer-receipt');const v=journal(x,receipt?'CustomerReceipt':'SupplierPayment',id('pay'),receipt?[{accountId:body.accountId||x.postingConfig.cashAccountId,debit:amount},{accountId:x.postingConfig.arAccountId,credit:amount}]:[{accountId:x.postingConfig.apAccountId,debit:amount},{accountId:body.accountId||x.postingConfig.cashAccountId,credit:amount}]);audit(x,'POST',receipt?'CustomerReceipt':'SupplierPayment',(v as any).id);save(x);return v as T}
+
+  // ---- 2) Totals ----
+  let subtotal = 0;
+  for (const l of rawLines) {
+    subtotal += Number(l.quantity) * Number(l.unitCost);
+  }
+  const tax = subtotal * 0.15;
+  const total = subtotal + tax;
+
+  // ---- 3) Journal lines + validate ----
+  const journalLines: JournalLineInput[] = [
+    ...rawLines.filter(l => Number(l.unitCost) > 0).map(l => ({
+      accountId: x.items.find(i => i.id === l.itemId)!.purchaseAccountId,
+      debit: Number(l.quantity) * Number(l.unitCost),
+    })),
+    ...(tax !== 0 ? [{ accountId: x.postingConfig.inputTaxAccountId, debit: tax }] : []),
+    { accountId: x.postingConfig.apAccountId, credit: total },
+  ];
+  validateJournalLines(x, journalLines);
+
+  const billId = id('bill');
+
+  // ---- 4) Apply lot updates (inventory items only) ----
+  if (rawLines.some(l => x.items.find(i => i.id === l.itemId)!.type === 'Inventory') && !Number.isFinite(Date.parse(body.billDate))) throw new Error('Invalid bill date');
+  for (const l of rawLines) {
+    const item = x.items.find((it) => it.id === l.itemId)!;
+    if (item.type === 'Inventory') {
+      item.lots.push({
+        id: id('lot'),
+        warehouseId: body.warehouseId,
+        remainingQuantity: String(Number(l.quantity)),
+        unitCost: String(Number(l.unitCost)),
+        receivedAt: body.billDate,
+      } as never);
+    }
+  }
+
+  // ---- 5) Journal + persist ----
+  journal(x, 'PurchaseBill', billId, journalLines);
+
+  const bill = {
+    id: billId,
+    billNumber: nextNo('PUR', x.purchases.length),
+    transactionDate: body.billDate,
+    total: String(total),
+    status: 'Posted',
+    currencyCode: body.currencyCode,
+    supplier: x.suppliers.find((s) => s.id === body.supplierId),
+    lines: rawLines.map((l: any) => ({
+      ...l,
+      id: id('pl'),
+      item: x.items.find((i) => i.id === l.itemId),
+    })),
+  };
+  x.purchases.unshift(bill as never);
+
+  audit(x, 'POST', 'PurchaseBill', billId);
+  save(x);
+  return bill as T;
+}
+if (clean === '/sales/invoice') {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Invalid document payload');
+  if (!x.customers.some(p => p.id === body.customerId)) throw new Error('Invalid customer');
+  if (!x.warehouses.some(w => w.id === body.warehouseId && w.isActive !== false)) throw new Error('Invalid or inactive warehouse');
+
+  // ---- 1) Validate input shape before any calculation ----
+  const rawLines = body?.lines;
+  if (!Array.isArray(rawLines) || rawLines.length === 0) {
+    throw new Error('Invoice requires at least one line');
+  }
+
+  const seenItems = new Set<string>();
+  for (let i = 0; i < rawLines.length; i++) {
+    const l = rawLines[i];
+    const tag = `Line ${i + 1}`;
+    if (!l || typeof l !== 'object' || Array.isArray(l)) {
+      throw new Error(`${tag}: invalid line payload`);
+    }
+    if (typeof l.itemId !== 'string' || !l.itemId) {
+      throw new Error(`${tag}: itemId is required`);
+    }
+    if (seenItems.has(l.itemId)) {
+      throw new Error(`${tag}: duplicate item in invoice is not allowed`);
+    }
+    seenItems.add(l.itemId);
+
+    const qty = toDecimalStrict(l.quantity, `${tag}: quantity`);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      throw new Error(`${tag}: quantity must be a positive number`);
+    }
+    const price = toDecimalStrict(l.unitPrice, `${tag}: unitPrice`);
+    if (!Number.isFinite(price) || price < 0) {
+      throw new Error(`${tag}: unitPrice must be a non-negative number`);
+    }
+    const item = x.items.find((it) => it.id === l.itemId);
+    if (!item || (item as { isActive?: boolean }).isActive === false) {
+      throw new Error(`${tag}: unknown or inactive item`);
+    }
+    if (!['Inventory', 'Service'].includes(item.type)) throw new Error(`${tag}: unsupported item type`);
+  }
+
+  // ---- 2) Build totals and plan FIFO allocations (no Db mutation) ----
+  let subtotal = 0;
+  let cost = 0;
+  const allocations: Array<{ itemId: string; lotId: string; take: number }> = [];
+
+  for (const l of rawLines) {
+    const qty = toDecimalStrict(l.quantity, 'quantity');
+    const price = toDecimalStrict(l.unitPrice, 'unitPrice');
+    subtotal += qty * price;
+
+    const item = x.items.find((it) => it.id === l.itemId)!;
+
+    if (item.type === 'Inventory') {
+      let remaining = qty;
+      const lots = [...(item.lots ?? [])].filter(l => l.warehouseId === body.warehouseId);
+      for (const lot of lots) {
+        if (!Number.isFinite(Date.parse(lot.receivedAt))) throw new Error('Invalid inventory receipt date');
+      }
+      lots.sort((a, b) => Date.parse(a.receivedAt) - Date.parse(b.receivedAt) || a.id.localeCompare(b.id));
+      for (const lot of lots) {
+        if (remaining <= 0) break;
+        const available = toDecimalStrict(lot.remainingQuantity, 'Inventory quantity');
+        const unitCost = toDecimalStrict(lot.unitCost, 'Inventory cost');
+        if (available < 0 || unitCost < 0) throw new Error('Invalid negative inventory quantity or cost');
+        const take = Math.min(remaining, available);
+        if (take <= 0) continue;
+        allocations.push({ itemId: item.id, lotId: lot.id, take });
+        cost += take * unitCost;
+        if (!Number.isFinite(cost)) throw new Error('Inventory cost is not finite');
+        remaining -= take;
+      }
+      if (remaining > 0) {
+        throw new Error(
+          `Insufficient stock for item ${item.code ?? item.id}`,
+        );
+      }
+    }
+  }
+
+  const tax = subtotal * 0.15;
+  const total = subtotal + tax;
+
+  // ---- 3) Build journal lines, validate BEFORE mutating ----
+  const journalLines: JournalLineInput[] = [
+    { accountId: x.postingConfig.arAccountId, debit: total },
+    { accountId: x.postingConfig.salesAccountId, credit: subtotal },
+    ...(tax !== 0 ? [{ accountId: x.postingConfig.outputTaxAccountId, credit: tax }] : []),
+  ];
+  if (cost > 0) {
+    journalLines.push(
+      { accountId: x.postingConfig.cogsAccountId, debit: cost },
+      { accountId: x.postingConfig.inventoryAccountId, credit: cost },
+    );
+  }
+
+  validateJournalLines(x, journalLines); // throws → nothing mutated
+
+  // ---- 4) Single invoice id used by both invoice and journal ----
+  const invoiceId = id('inv');
+
+  // ---- 5) Apply FIFO consumption now that validation passed ----
+  for (const a of allocations) {
+    const lot = x.items
+      .find((i) => i.id === a.itemId)!
+      .lots.find((lo) => lo.id === a.lotId)!;
+    lot.remainingQuantity = String(Number(lot.remainingQuantity) - a.take);
+  }
+
+  // ---- 6) Create journal with matching sourceId ----
+  journal(x, 'SalesInvoice', invoiceId, journalLines);
+
+  // ---- 7) Persist invoice row ----
+  const invoice = {
+    id: invoiceId,
+    invoiceNumber: nextNo('INV', x.sales.length),
+    transactionDate: body.invoiceDate,
+    total: String(total),
+    status: 'Posted',
+    currencyCode: body.currencyCode,
+    customer: x.customers.find((c) => c.id === body.customerId),
+    lines: rawLines.map((l: any) => ({
+      ...l,
+      id: id('sl'),
+      item: x.items.find((i) => i.id === l.itemId),
+    })),
+  };
+  x.sales.unshift(invoice as never);
+
+  audit(x, 'POST', 'SalesInvoice', invoiceId);
+  save(x);
+  return invoice as T;
+}
+if (clean === '/accounting/journals/manual') {
+  const lines = validateJournalLines(x, body?.lines);
+
+  const v = journal(x, 'Manual', id('manual'), lines); // throws on invalid
+  audit(x, 'POST', 'Journal', (v as { id: string }).id);
+  save(x);
+  return v as T;
+}
+  if(clean==='/payments/customer-receipt'||clean==='/payments/supplier-payment') {
+    const amount = toDecimalStrict(body?.amount, 'Payment amount');
+    if (amount <= 0) throw new Error('Payment amount must be positive');
+    const receipt = clean === '/payments/customer-receipt';
+    const lines = validateJournalLines(x, receipt ? [
+      {accountId: body.accountId ?? x.postingConfig.cashAccountId, debit: amount},
+      {accountId: x.postingConfig.arAccountId, credit: amount},
+    ] : [
+      {accountId: x.postingConfig.apAccountId, debit: amount},
+      {accountId: body.accountId ?? x.postingConfig.cashAccountId, credit: amount},
+    ]);
+    const sourceType = receipt ? 'CustomerReceipt' : 'SupplierPayment';
+    const v = journal(x, sourceType, id('pay'), lines);
+    audit(x, 'POST', sourceType, v.id);
+    save(x);
+    return v as T;
+  }
   if(clean==='/credit-notes'){const v={id:id('cn'),creditNoteNumber:nextNo('CN',x.creditNotes.length),transactionDate:body.creditNoteDate??now(),total:String(n(body.total)),status:'Posted',...body};x.creditNotes.unshift(v as never);audit(x,'POST','CreditNote',v.id);save(x);return v as T}
   if(clean==='/debit-notes'){const v={id:id('dn'),debitNoteNumber:nextNo('DN',x.debitNotes.length),transactionDate:body.debitNoteDate??now(),total:String(n(body.total)),status:'Posted',...body};x.debitNotes.unshift(v as never);audit(x,'POST','DebitNote',v.id);save(x);return v as T}
-  if(clean==='/year-end/close'){const v=journal(x,'YearEndClosing',body.fiscalYearId??'fy',[{accountId:x.postingConfig.salesAccountId,debit:0},{accountId:x.accounts.find(a=>a.type==='Equity')?.id||'acc-equity',credit:0}]);audit(x,'CLOSE','FiscalYear',body.fiscalYearId??'fy');save(x);return {closingJournalId:(v as any).id,netProfit:'0'} as T}
   if(clean.startsWith('/banking/accounts/')){const v={id:id('bank'),isActive:true,...body};x.bankAccounts.unshift(v as never);save(x);return v as T}
   if(clean.startsWith('/banking/statement-lines/')){const v={id:id('stmt'),matchedJournalId:null,...body};x.statementLines.unshift(v as never);save(x);return v as T}
   if(clean.startsWith('/banking/match/')){const line=x.statementLines.find((s:any)=>clean.includes(s.id)) as any;if(line)line.matchedJournalId=body.journalId;save(x);return line as T}
