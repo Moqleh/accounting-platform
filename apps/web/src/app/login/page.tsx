@@ -3,8 +3,10 @@ import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, BarChart3, Boxes, Building2, Calculator, CheckCircle2, FileText, Languages, Landmark, LockKeyhole, Mail, Phone, ReceiptText, ShieldCheck, ShoppingCart, Wallet } from 'lucide-react';
 import { login } from '@/lib/api';
-import styles from './login.module.css';
+import baseStyles from './login.module.css';
+import marketing from './marketing.module.css';
 import { PlatformLinks } from '@/components/platform-links';
+const styles={...baseStyles,...marketing};
 
 export default function Login() {
   const [ar,setAr]=useState(true), [email,setEmail]=useState(''), [password,setPassword]=useState(''), [busy,setBusy]=useState(false), [error,setError]=useState('');
@@ -19,7 +21,7 @@ export default function Login() {
     [BarChart3,ar?'التقارير المالية':'Financial reports',ar?'ميزان مراجعة، دخل، مركز مالي، أعمار ذمم وتقييم مخزون.':'Trial balance, income statement, balance sheet, aging and inventory valuation.'],
     [ShieldCheck,ar?'الصلاحيات والمراجعة':'Roles & audit',ar?'صلاحيات حسب الدور وسجل مراجعة للعمليات الحساسة.':'Role-based access and an audit trail for sensitive operations.']
   ] as const;
-  return <main className={styles.page} dir={ar?'rtl':'ltr'} lang={ar?'ar':'en'}>
+  return <main className={`${styles.page} ${styles.pageFix}`} dir={ar?'rtl':'ltr'} lang={ar?'ar':'en'}>
     <div className={styles.backdrop} aria-hidden="true"><i/><i/><i/></div>
     <header className={styles.header}>
       <a className={styles.brand} href="#top" aria-label={ar?'نظام المحاسبة':'Accounting System'}><span className={styles.brandIcon}><Calculator size={24} aria-hidden="true"/></span><div><strong>{ar?'نظام المحاسبة':'Accounting System'}</strong><span>ACCOUNTING & ERP</span></div></a>
@@ -50,22 +52,11 @@ export default function Login() {
         <p className={styles.help}>{ar?'تحتاج مساعدة؟ بيانات التواصل متاحة أسفل الصفحة.':'Need a hand? Contact details are available below.'}</p>
       </section>
     </div>
-
     <section id="features" className={styles.marketingSection} aria-labelledby="features-title"><div className={styles.sectionHead}><span>{ar?'منصة متكاملة':'CONNECTED WORKSPACE'}</span><h2 id="features-title">{ar?'الأدوات الأساسية في مكان واحد':'Core business tools in one place'}</h2><p>{ar?'وحدات مترابطة تغطي العمليات اليومية والتقارير والمراجعة دون تشتيت بين أنظمة منفصلة.':'Connected modules for daily operations, reporting and review without jumping between separate systems.'}</p></div><div className={styles.moduleGrid}>{modules.map(([Icon,title,desc])=><article className={styles.moduleCard} key={title}><span><Icon size={22}/></span><h3>{title}</h3><p>{desc}</p></article>)}</div></section>
-
     <section id="how" className={`${styles.marketingSection} ${styles.lightSection}`} aria-labelledby="how-title"><div className={styles.sectionHead}><span>{ar?'تدفق عمل واضح':'CLEAR WORKFLOW'}</span><h2 id="how-title">{ar?'كيف يعمل النظام؟':'How it works'}</h2></div><div className={styles.steps}><article><b>01</b><h3>{ar?'تهيئة الشركة':'Set up the company'}</h3><p>{ar?'تحديد الحسابات والفترات والضرائب والمستودعات والعملات وفق احتياج الشركة.':'Configure accounts, periods, taxes, warehouses and currencies for the company.'}</p></article><article><b>02</b><h3>{ar?'تسجيل العمليات':'Record operations'}</h3><p>{ar?'إدخال المبيعات والمشتريات والمصروفات والمقبوضات والمدفوعات من وحداتها المخصصة.':'Record sales, purchases, expenses, receipts and payments in dedicated workflows.'}</p></article><article><b>03</b><h3>{ar?'الترحيل والمراجعة':'Post & review'}</h3><p>{ar?'ترحيل المستندات إلى القيود ومراجعة الحركة والمخزون والحسابات البنكية.':'Post documents to journals and review ledger, inventory and banking activity.'}</p></article><article><b>04</b><h3>{ar?'قراءة التقارير':'Read the reports'}</h3><p>{ar?'متابعة التقارير المالية والذمم والمخزون لدعم القرار والمراجعة الدورية.':'Use financial, aging and inventory reports for review and better decisions.'}</p></article></div></section>
-
     <section id="security" className={styles.marketingSection} aria-labelledby="security-title"><div className={styles.securityGrid}><div><div className={styles.sectionHead}><span>{ar?'ثقة مبنية على النظام':'SECURITY & CONTROL'}</span><h2 id="security-title">{ar?'حماية وصلاحيات ومراجعة':'Security, permissions and auditability'}</h2><p>{ar?'النسخة الخادمية مصممة بمصادقة JWT، عضوية شركات وصلاحيات حسب الدور، وكلمات مرور مخزنة كـ bcrypt hash، مع سجل مراجعة وضوابط على القيود المرحلة.':'The server edition uses JWT authentication, company memberships, role permissions and bcrypt password hashes, with audit records and controls around posted journals.'}</p></div><ul className={styles.checkList}><li><CheckCircle2/>{ar?'قيود مرحلة غير قابلة للتعديل المباشر؛ التصحيح يتم بالعكس المحاسبي.':'Posted journals are immutable; corrections use reversals.'}</li><li><CheckCircle2/>{ar?'فصل صلاحيات المالك والمدير والمحاسب والمبيعات والمشتريات والموظف.':'Separate Owner, Admin, Accountant, Sales, Purchases and Employee roles.'}</li><li><CheckCircle2/>{ar?'سياسات عزل بيانات الشركات وضوابط قاعدة بيانات إضافية في النسخة الخادمية.':'Tenant isolation policies and additional database constraints in the server edition.'}</li></ul></div><aside className={styles.securityCard}><ShieldCheck size={34}/><strong>{ar?'مهم':'Important'}</strong><p>{ar?'النسخة المنشورة للمعاينة قد تستخدم بيانات محلية وتجريبية لبعض الوظائف. تشغيل النظام ببيانات أعمال حقيقية يتطلب نشر الخادم وقاعدة البيانات والنسخ الاحتياطي والأسرار بشكل آمن.':'The published preview may use local sample data for some functions. Real business data requires a properly deployed server, database, backups and secret management.'}</p></aside></div></section>
-
     <section id="faq" className={`${styles.marketingSection} ${styles.lightSection}`} aria-labelledby="faq-title"><div className={styles.sectionHead}><span>FAQ</span><h2 id="faq-title">{ar?'أسئلة شائعة':'Frequently asked questions'}</h2></div><div className={styles.faqGrid}><details><summary>{ar?'هل يدعم العربية والإنجليزية؟':'Does it support Arabic and English?'}</summary><p>{ar?'نعم، واجهة النظام مصممة للعمل بالعربية والإنجليزية مع اتجاه RTL وLTR.':'Yes. The interface supports Arabic and English with RTL and LTR layouts.'}</p></details><details><summary>{ar?'هل يدعم أكثر من شركة؟':'Can it handle more than one company?'}</summary><p>{ar?'نعم، النظام يدعم عضويات متعددة للشركات والتنقل بينها حسب صلاحيات المستخدم.':'Yes. Users can have memberships in multiple companies and switch according to their permissions.'}</p></details><details><summary>{ar?'هل يدعم المخزون والتقارير؟':'Does it include inventory and reporting?'}</summary><p>{ar?'نعم، يتضمن مخزونًا حسب المستودع وتقارير مالية وذمم وتقييم مخزون ضمن النطاق المنفذ.':'Yes. The implemented scope includes warehouse inventory, financial reports, aging and inventory valuation.'}</p></details><details><summary>{ar?'هل يغني عن المحاسب أو المتطلبات الرسمية؟':'Does it replace an accountant or official compliance requirements?'}</summary><p>{ar?'لا. النظام أداة تشغيل ومحاسبة، ويجب التحقق من المتطلبات الضريبية والقانونية والفوترة الإلكترونية حسب الدولة والجهة المختصة.':'No. It is an accounting and operations tool; tax, legal and e-invoicing requirements must be verified for the applicable jurisdiction.'}</p></details></div></section>
-
     <PlatformLinks ar={ar}/>
-    <footer className={styles.footer}>
-      <p>{ar?'تصميم':'Designed by'} <strong>{ar?'محمد العقلة':'Mohammed Al-Oqleh'}</strong></p>
-      <nav className={styles.contacts} aria-label={ar?'بيانات التواصل':'Contact details'}>
-        <a href="tel:+966545506941" aria-label={ar?'الاتصال بمحمد العقلة':'Call Mohammed Al-Oqleh'}><Phone size={16} aria-hidden="true"/><span dir="ltr">+966 545506941</span></a>
-        <a href="mailto:info.moqleh@yahoo.com" aria-label={ar?'مراسلة محمد العقلة بالبريد الإلكتروني':'Email Mohammed Al-Oqleh'}><Mail size={17} aria-hidden="true"/><span dir="ltr">info.moqleh@yahoo.com</span></a>
-      </nav>
-    </footer>
+    <footer className={styles.footer}><p>{ar?'تصميم':'Designed by'} <strong>{ar?'محمد العقلة':'Mohammed Al-Oqleh'}</strong></p><nav className={styles.contacts} aria-label={ar?'بيانات التواصل':'Contact details'}><a href="tel:+966545506941" aria-label={ar?'الاتصال بمحمد العقلة':'Call Mohammed Al-Oqleh'}><Phone size={16} aria-hidden="true"/><span dir="ltr">+966 545506941</span></a><a href="mailto:info.moqleh@yahoo.com" aria-label={ar?'مراسلة محمد العقلة بالبريد الإلكتروني':'Email Mohammed Al-Oqleh'}><Mail size={17} aria-hidden="true"/><span dir="ltr">info.moqleh@yahoo.com</span></a></nav></footer>
   </main>;
 }
