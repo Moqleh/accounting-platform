@@ -1,0 +1,23 @@
+# Explicitly selected Blueprint; no database or paid resource is created here.
+# Complete docs/FREE-HOSTING-AR.md readiness gates before deployment.
+services:
+  - type: web
+    name: accounting-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile.api
+    dockerContext: .
+    autoDeployTrigger: "off"
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://moqleh.github.io
+      - key: DATABASE_URL
+        sync: false
