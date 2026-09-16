@@ -82,7 +82,7 @@ jobs:
             if curl -fsS http://localhost:3000/login/ >/dev/null; then break; fi
             sleep 1
           done
-          routes=(/login/ / /sales/ /sales/new/ /sales/credit-notes/ /sales/credit-notes/new/ /purchases/ /purchases/new/ /purchases/debit-notes/ /purchases/debit-notes/new/ /customers/ /suppliers/ /inventory/ /payments/ /banking/ /expenses/ /journals/ /journals/new/ /reports/ /reports/trial-balance/ /reports/profit-loss/ /reports/balance-sheet/ /reports/customer-aging/ /reports/supplier-aging/ /reports/inventory-valuation/ /reports/account-activity/ /setup/ /users/ /audit/ /year-end/ /settings/)
+          routes=(/login/ / /financial-ai/ /sales/ /sales/new/ /sales/credit-notes/ /sales/credit-notes/new/ /purchases/ /purchases/new/ /purchases/debit-notes/ /purchases/debit-notes/new/ /customers/ /suppliers/ /inventory/ /payments/ /banking/ /expenses/ /journals/ /journals/new/ /reports/ /reports/trial-balance/ /reports/profit-loss/ /reports/balance-sheet/ /reports/customer-aging/ /reports/supplier-aging/ /reports/inventory-valuation/ /reports/account-activity/ /setup/ /users/ /audit/ /year-end/ /settings/)
           for route in "${routes[@]}"; do
             curl -fsS "http://localhost:3000$route" >/dev/null || { echo "Route failed: $route"; exit 1; }
           done
