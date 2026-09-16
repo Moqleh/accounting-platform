@@ -25,6 +25,7 @@ import { AuthService } from './auth.service';
 import { IdempotencyService } from './idempotency.service';
 import { PostingConfigService } from './posting-config.service';
 import { FinancialFactsService } from './financial-facts.service';
+import { FinancialAiQueryService } from './financial-ai-query.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
 import { PermissionGuard } from './permission.guard';
@@ -33,13 +34,11 @@ import { TenantPrismaService } from './tenant-prisma.service';
 import { PrismaService } from './prisma.service';
 
 const jwtSecret = process.env.JWT_SECRET;
-if (!jwtSecret || jwtSecret.length < 24) {
-  throw new Error('JWT_SECRET must be configured with at least 24 characters');
-}
+if (!jwtSecret || jwtSecret.length < 24) throw new Error('JWT_SECRET must be configured with at least 24 characters');
 
 @Module({
   imports: [JwtModule.register({ global: true, secret: jwtSecret, signOptions: { expiresIn: '8h' } })],
   controllers: [AppController, AuthController, AccountingController, ErpController, AgingController, SalesController, PurchasesController, PaymentsController, CreditNotesController, DebitNotesController, YearEndController, AdminController, BankingController, AiFinancialController],
-  providers: [PrismaService, TenantPrismaService, AuthService, IdempotencyService, PostingConfigService, FinancialFactsService, JwtAuthGuard, RolesGuard, PermissionGuard, AiFinancialAccessGuard, AccountingService, SalesService, PurchasesService, PaymentsService, CreditNotesService, DebitNotesService, YearEndService],
+  providers: [PrismaService, TenantPrismaService, AuthService, IdempotencyService, PostingConfigService, FinancialFactsService, FinancialAiQueryService, JwtAuthGuard, RolesGuard, PermissionGuard, AiFinancialAccessGuard, AccountingService, SalesService, PurchasesService, PaymentsService, CreditNotesService, DebitNotesService, YearEndService],
 })
 export class AppModule {}
