@@ -24,6 +24,7 @@ import { YearEndService } from './year-end.service';
 import { AuthService } from './auth.service';
 import { IdempotencyService } from './idempotency.service';
 import { PostingConfigService } from './posting-config.service';
+import { FinancialFactsService } from './financial-facts.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
 import { PermissionGuard } from './permission.guard';
@@ -39,6 +40,6 @@ if (!jwtSecret || jwtSecret.length < 24) {
 @Module({
   imports: [JwtModule.register({ global: true, secret: jwtSecret, signOptions: { expiresIn: '8h' } })],
   controllers: [AppController, AuthController, AccountingController, ErpController, AgingController, SalesController, PurchasesController, PaymentsController, CreditNotesController, DebitNotesController, YearEndController, AdminController, BankingController, AiFinancialController],
-  providers: [PrismaService, TenantPrismaService, AuthService, IdempotencyService, PostingConfigService, JwtAuthGuard, RolesGuard, PermissionGuard, AiFinancialAccessGuard, AccountingService, SalesService, PurchasesService, PaymentsService, CreditNotesService, DebitNotesService, YearEndService],
+  providers: [PrismaService, TenantPrismaService, AuthService, IdempotencyService, PostingConfigService, FinancialFactsService, JwtAuthGuard, RolesGuard, PermissionGuard, AiFinancialAccessGuard, AccountingService, SalesService, PurchasesService, PaymentsService, CreditNotesService, DebitNotesService, YearEndService],
 })
 export class AppModule {}
