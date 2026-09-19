@@ -1,5 +1,5 @@
 'use client';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, BarChart3, Boxes, Building2, Calculator, CheckCircle2, FileText, Languages, Landmark, LockKeyhole, Mail, Phone, ReceiptText, ShieldCheck, ShoppingCart, Wallet } from 'lucide-react';
 import { login } from '@/lib/api';
@@ -11,7 +11,8 @@ const styles={...baseStyles,...marketing};
 export default function Login() {
   const [ar,setAr]=useState(true), [email,setEmail]=useState(''), [password,setPassword]=useState(''), [busy,setBusy]=useState(false), [error,setError]=useState('');
   const router=useRouter();
-  const submit=async(event:FormEvent)=>{event.preventDefault();setBusy(true);setError('');try{await login(email,password);router.replace('/');router.refresh()}catch(err){setError(err instanceof Error?err.message:String(err))}finally{setBusy(false)}};
+  useEffect(()=>{document.documentElement.lang=ar?'ar':'en';document.documentElement.dir=ar?'rtl':'ltr'},[ar]);
+  const submit=async(event:FormEvent)=>{event.preventDefault();setBusy(true);setError('');try{await login(email,password);router.replace(process.env.NEXT_PUBLIC_BASE_PATH||'/');router.refresh()}catch(err){setError(err instanceof Error?err.message:String(err))}finally{setBusy(false)}};
   const Arrow=ar?ArrowLeft:ArrowRight;
   const modules=[
     [ShoppingCart,ar?'المبيعات والفواتير':'Sales & invoicing',ar?'إدارة دورة البيع والفواتير ومرتجعات العملاء.':'Manage sales, invoices and customer returns.'],
