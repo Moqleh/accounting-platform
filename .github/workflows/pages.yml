@@ -14,6 +14,7 @@ concurrency:
 
 env:
   NEXT_PUBLIC_API_URL: ''
+  NEXT_PUBLIC_BUILD_SHA: ${{ github.sha }}
 
 jobs:
   deploy:
@@ -38,8 +39,10 @@ jobs:
       - name: Build static web app
         run: pnpm --filter @accounting/web build
 
-      - name: Add nojekyll marker
-        run: touch apps/web/out/.nojekyll
+      - name: Add deployment version and nojekyll marker
+        run: |
+          printf '{"sha":"%s"}\n' "$GITHUB_SHA" > apps/web/out/version.json
+          touch apps/web/out/.nojekyll
 
       - name: Publish to configured gh-pages source
         uses: peaceiris/actions-gh-pages@v4
