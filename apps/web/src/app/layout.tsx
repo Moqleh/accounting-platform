@@ -33,7 +33,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ar" dir="rtl">
-      <body>{children}<footer style={{display:'flex',justifyContent:'center',alignItems:'center',padding:'28px 16px'}}><img src="/accounting-platform/MO%20LOGO.png" alt="MO" style={{width:'110px',height:'auto',display:'block'}} /></footer></body>
+      <body>{children}<footer style={{display:'flex',justifyContent:'center',alignItems:'center',padding:'28px 16px'}}><img src="/accounting-platform/MO%20LOGO.png" alt="" aria-hidden="true" style={{width:'110px',height:'auto',display:'block'}} /></footer></body>
     </html>
   );
 }
