@@ -33,7 +33,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ar" dir="rtl">
-      <body>{children}<footer style={{display:'flex',justifyContent:'center',alignItems:'center',padding:'28px 16px'}}><img src="https://raw.githubusercontent.com/Moqleh/accounting-platform/main/MO%20LOGO.png?v=2" alt="MO" style={{width:'110px',height:'auto',display:'block'}} /></footer></body>
+      <body>{children}<footer style={{display:'flex',justifyContent:'center',alignItems:'center',padding:'28px 16px'}}><a href="https://moqleh.github.io/mohammed-al-oqleh-official/" aria-label="Mohammed Al-Oqleh website"><img src="https://raw.githubusercontent.com/Moqleh/accounting-platform/main/MO%20LOGO.png?v=2" alt="MO" style={{width:'110px',height:'auto',display:'block'}} /></a></footer></body>
     </html>
   );
 }
