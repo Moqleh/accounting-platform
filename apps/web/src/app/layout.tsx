@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     title: 'Accounting & ERP Platform',
     description: 'Bilingual accounting and ERP workspace for core financial operations and reporting.',
   },
-  robots: { index: true, follow: true },
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
