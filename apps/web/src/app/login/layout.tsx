@@ -5,6 +5,7 @@ export const metadata: Metadata = {
   description: 'منصة محاسبة وإدارة أعمال ثنائية اللغة للمبيعات والمشتريات والمخزون والقيود والتقارير والتسويات البنكية.',
   alternates: { canonical: '/login/' },
   robots: { index: true, follow: true },
+  verification: { google: 'CRdlJ0OiNKtF_xcIB8OYPGbWqHaVqvCc9GBpf1drvZY' },
   openGraph: {
     type: 'website',
     url: '/login/',
