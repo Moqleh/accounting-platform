@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /accounting-platform/about/
+Allow: /accounting-platform/login/
+Disallow: /accounting-platform/api/
+
+Sitemap: https://moqleh.github.io/accounting-platform/sitemap.xml
